@@ -81,8 +81,10 @@ class FindSubset_Vect_No_ValLoss(object):
                     
                 inputs, targets = loader_val.dataset[batch_idx]
                 inputs, targets = inputs.to(self.device), targets.to(self.device)
-            
+                
                 val_out = self.model(inputs)
+                print('val_out shape ',val_out.shape)
+                print('targets shape ',targets.shape)
                 constraint += self.criterion(val_out, targets)
                 
             constraint /= len(loader_val.batch_sampler)
@@ -674,7 +676,7 @@ class FindSubset_Vect_TrnLoss(object):
         #main_optimizer.param_groups[0]['eps']
 
         loader_tr = DataLoader(CustomDataset_WithId(self.x_trn, self.y_trn,\
-            transform=None), device = self.device, shuffle=False,batch_size=self.batch_size*20)
+            transform=None), shuffle=False,batch_size=self.batch_size*20) # why device = self.device here?
 
         loader_val = DataLoader(CustomDataset(self.x_val, self.y_val,device = self.device,transform=None),\
             shuffle=False,batch_size=self.batch_size*20)

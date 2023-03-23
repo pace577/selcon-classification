@@ -6,9 +6,12 @@ import subprocess
 import sys
 import time
 import torch
+from pathlib import Path
 
 from utils.custom_dataset import load_std_regress_data, load_dataset_custom
 from utils.Create_Slices import get_slices
+
+from generate_data import generate_data
 
 from utils.time_series import load_time_series_data
 
@@ -18,7 +21,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 # device = "cpu"
 print("Using Device:", device)
        
-def load_def_data(data_name, datadir = '.\Dataset', is_time = False, past_length = 100):
+def load_def_data(data_name, datadir = Path(".")/"Dataset", is_time = False, past_length = 100, n_classes=2,n_samples=100,n_features=2,class_sep=1):
     '''Loads the default datasets used to present the results
     in the paper.
     
@@ -27,6 +30,10 @@ def load_def_data(data_name, datadir = '.\Dataset', is_time = False, past_length
         data_name: Name of dataset to be used for experiment
         is_time: 1 if dataset is time series; 0 otherwise
         past_length: 
+        n_features : number of features in the training data
+        n_classes : number of unique classes
+        n_samples : number of samples
+        class_sep : the class separation (float value default 1.0), More value, more seperation
         
     Returns:
         Tuple of numpy arrays: (x_trn, y_train), (x_val, y_val), (x_tst, y_tst)
@@ -40,7 +47,7 @@ def load_def_data(data_name, datadir = '.\Dataset', is_time = False, past_length
 
     elif data_name in ['Community_Crime','census','LawSchool']:
         
-        datadir = datadir + '/' + data_name + '/'
+        datadir = datadir / data_name 
 
         fullset, data_dims = load_dataset_custom(datadir, data_name, True)
 
@@ -71,6 +78,17 @@ def load_def_data(data_name, datadir = '.\Dataset', is_time = False, past_length
 
         x_val,y_val = torch.cat(x_val_list,dim=0), torch.cat(y_val_list,dim=0)
         x_tst,y_tst = torch.cat(x_tst_list,dim=0), torch.cat(y_tst_list,dim=0)
+        
+        print(y_val.shape)
+    
+    elif data_name == 'Custom_Data':
+        fullset, valset, testset = generate_data(class_sep = class_sep)
+        
+        x_trn,y_trn =  torch.from_numpy(fullset[0]).float().to(device),torch.from_numpy(fullset[1]).float().to(device)
+        x_val,y_val =  torch.from_numpy(valset[0]).float(),torch.from_numpy(valset[1]).float()
+        x_tst, y_tst = torch.from_numpy(testset[0]).float(),torch.from_numpy(testset[1]).float()
+        
+        # return (x_trn, y_trn), (x_val, y_val), (x_tst, y_tst)
 
     else:
         datadir = datadir + '/' + data_name + '/'        
