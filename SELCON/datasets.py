@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 import torch
+from pathlib import Path
 
 from utils.custom_dataset import load_std_regress_data, load_dataset_custom
 from utils.Create_Slices import get_slices
@@ -18,7 +19,7 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 # device = "cpu"
 print("Using Device:", device)
        
-def load_def_data(data_name, datadir = '.\Dataset', is_time = False, past_length = 100):
+def load_def_data(data_name, datadir = Path(".")/"Dataset", is_time = False, past_length = 100):
     '''Loads the default datasets used to present the results
     in the paper.
     
@@ -31,6 +32,7 @@ def load_def_data(data_name, datadir = '.\Dataset', is_time = False, past_length
     Returns:
         Tuple of numpy arrays: (x_trn, y_train), (x_val, y_val), (x_tst, y_tst)
     '''
+    datadir = Path(datadir)
     if is_time:
         fullset, valset, testset = load_time_series_data(datadir, data_name, past_length) #, sc_trans
 
@@ -40,7 +42,7 @@ def load_def_data(data_name, datadir = '.\Dataset', is_time = False, past_length
 
     elif data_name in ['Community_Crime','census','LawSchool']:
         
-        datadir = datadir + '/' + data_name + '/'
+        datadir = datadir / data_name
 
         fullset, data_dims = load_dataset_custom(datadir, data_name, True)
 
@@ -73,9 +75,9 @@ def load_def_data(data_name, datadir = '.\Dataset', is_time = False, past_length
         x_tst,y_tst = torch.cat(x_tst_list,dim=0), torch.cat(y_tst_list,dim=0)
 
     else:
-        datadir = datadir + '/' + data_name + '/'        
+        datadir = datadir / data_name
         
-        fullset, valset, testset = load_std_regress_data (datadir, data_name, True)
+        fullset, valset, testset = load_std_regress_data(datadir, data_name, True)
 
         x_trn,y_trn =  torch.from_numpy(fullset[0]).float(),torch.from_numpy(fullset[1]).float()
         x_val,y_val =  torch.from_numpy(valset[0]).float(),torch.from_numpy(valset[1]).float()
@@ -84,6 +86,17 @@ def load_def_data(data_name, datadir = '.\Dataset', is_time = False, past_length
     return (x_trn, y_trn), (x_val, y_val), (x_tst, y_tst)
 
 def get_data(x_train, x_val, y_train, y_val):
+    """Convert numpy arrays to torch tensors (float)
+
+    Arguments:
+        x_train (np.ndarray)
+        y_train (np.ndarray)
+        x_test (np.ndarray)
+        y_test (np.ndarray)
+
+    Returns:
+        4-tuple of torch tensors: x_trn, x_val, y_train, y_val
+    """
 
     x_trn,y_trn =  torch.from_numpy(x_train).float(),torch.from_numpy(y_train).float()
     x_val,y_val =  torch.from_numpy(x_val).float(),torch.from_numpy(y_val).float()

@@ -53,7 +53,7 @@ class FindSubset_Vect_No_ValLoss(object):
         #    gamma=0.5) #[e*2 for e in change]
 
         #alphas.requires_grad = False
-        loader_val = DataLoader(CustomDataset(self.x_val, self.y_val, device = self.device, transform=None),\
+        loader_val = DataLoader(CustomDataset(self.x_val, self.y_val, transform=None),\
             shuffle=False, batch_size=self.batch_size)
             
 
@@ -183,7 +183,7 @@ class FindSubset_Vect_No_ValLoss(object):
         loader_tr = DataLoader(CustomDataset_WithId(self.x_trn, self.y_trn,\
             transform=None),shuffle=False,batch_size=self.batch_size*20)
 
-        loader_val = DataLoader(CustomDataset(self.x_val, self.y_val,device = self.device,transform=None),\
+        loader_val = DataLoader(CustomDataset(self.x_val, self.y_val, transform=None),\
             shuffle=False,batch_size=self.batch_size*20)
         
         for batch_idx in list(loader_tr.batch_sampler):
@@ -267,7 +267,7 @@ class FindSubset_Vect_No_ValLoss(object):
         loader_tr = DataLoader(CustomDataset_WithId(self.x_trn[curr_subset], self.y_trn[curr_subset],\
             transform=None),shuffle=False,batch_size=batch)
 
-        loader_val = DataLoader(CustomDataset(self.x_val, self.y_val,device = self.device,transform=None),\
+        loader_val = DataLoader(CustomDataset(self.x_val, self.y_val, transform=None),\
             shuffle=False,batch_size=batch)  
 
         sum_error = torch.nn.MSELoss(reduction='sum')       
@@ -674,9 +674,9 @@ class FindSubset_Vect_TrnLoss(object):
         #main_optimizer.param_groups[0]['eps']
 
         loader_tr = DataLoader(CustomDataset_WithId(self.x_trn, self.y_trn,\
-            transform=None), device = self.device, shuffle=False,batch_size=self.batch_size*20)
+            transform=None), shuffle=False,batch_size=self.batch_size*20)
 
-        loader_val = DataLoader(CustomDataset(self.x_val, self.y_val,device = self.device,transform=None),\
+        loader_val = DataLoader(CustomDataset(self.x_val, self.y_val, transform=None),\
             shuffle=False,batch_size=self.batch_size*20)
         
         for batch_idx in list(loader_tr.batch_sampler):
