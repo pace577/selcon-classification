@@ -24,6 +24,15 @@ You can install the package using <br>
 
 To run this code fully, you'll need PyTorch (we're using version 1.4.0) and scikit-learn. We've been running our code in Python 3.7.
 
+When you are running code for development, make sure you have the `SELCON` directory (the one that contains the code) in your path. If you are running code from the root directory of this repository, the following code will update the python path appropriately.
+
+``` python
+import sys
+import os
+sys.path.append(os.path.join(".","SELCON"))
+```
+
+
 ### Usage
 SELCON package can be utilised in Linear Subset Selection or Deep Subset Selection methods as:
 
@@ -47,6 +56,27 @@ subset_idxs = reg.return_subset()
 X_sub = X_trn[subset_idxs]
 y_sub = Y_trn[subset_idxs]
 ```
+
+The following code loads the `cadata` dataset and runs it on a regression model.
+``` python
+from SELCON.datasets import load_def_data
+from SELCON.linear import Regression
+
+# Load data and prepare linear regression model
+(x_train, y_train), (x_val, y_val), (x_test, y_test) = load_def_data("cadata")
+reg = Regression()
+
+# Trains SELCON model for a subset fraction of 0.03 on the training subset (no fairness)
+reg.train_model_fair(X_trn, Y_trn, X_val, Y_val, fraction = 0.03)
+
+# Return optimal subset indices
+subset_idxs = reg.return_subset()
+
+# Returns the optimal subset of the training data for further use
+X_sub = X_trn[subset_idxs]
+y_sub = Y_trn[subset_idxs]
+```
+
 
 #### SELCON for Deep model
 ```
