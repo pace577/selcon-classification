@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import copy
 
-from utils.custom_dataset import CustomDataset_WithId, CustomDataset
+from SELCON.utils.custom_dataset import CustomDataset_WithId, CustomDataset
 from torch.utils.data import DataLoader
 
 
@@ -33,7 +33,7 @@ class FindSubset_Vect_No_ValLoss(object):
         torch.cuda.manual_seed(42)
         np.random.seed(42)
 
-
+    # This function is used to calculate the f(∅) and f({i})
     def precompute(self,f_pi_epoch,p_epoch,alphas):
         '''
         
@@ -77,6 +77,13 @@ class FindSubset_Vect_No_ValLoss(object):
             #l2_reg = torch.sum(flat*flat)
             
             constraint = 0. 
+
+            #************************************************************************************************
+            # This part calculates the F(w,α,∅) by a min max dual optimization over α and w with S as empty
+            #************************************************************************************************
+
+            # here they sample a batch of data with list of indices returned
+            # see here https://pytorch.org/docs/stable/data.html#:~:text=a%20batch%20of%20indices%20at%20a%20time.%20Mutually%20exclusive%20with%20batch_size%2C%20shuffle%2C%20sampler%2C%20and%20drop_last
             for batch_idx in list(loader_val.batch_sampler):
                     
                 inputs, targets = loader_val.dataset[batch_idx]
@@ -84,7 +91,7 @@ class FindSubset_Vect_No_ValLoss(object):
             
                 val_out = self.model(inputs)
                 constraint += self.criterion(val_out, targets)
-                
+            # normalizing the loss function    
             constraint /= len(loader_val.batch_sampler)
             constraint = constraint - self.delta
             multiplier = alphas*constraint #torch.dot(alphas,constraint)
@@ -114,13 +121,14 @@ class FindSubset_Vect_No_ValLoss(object):
             constraint /= len(loader_val.batch_sampler)
             constraint = constraint - self.delta
             multiplier = -1.0*alphas*constraint #torch.dot(-1.0*alphas,constraint)
+            # may be maximization is done here so as to update the the mu
             
             multiplier.backward()
             
             dual_optimizer.step()
 
             alphas.requires_grad = False
-            alphas.clamp_(min=0.0)
+            alphas.clamp_(min=0.0) # mu >=0
             alphas.requires_grad = True
             #print(alphas)
 
@@ -145,8 +153,14 @@ class FindSubset_Vect_No_ValLoss(object):
 
             #if i % 50 == 0:
             #    print(loss.item(),alphas,constraint)
-
+        
         print("Finishing F phi")
+        #**************************************************************************************************
+        # Done calculating F(w,α,∅)
+        #**************************************************************************************************
+        #**************************************************************************************************
+        # Now calculating  F(w,α,{i}) again as min max optimization over w and α 
+        #**************************************************************************************************
 
         if loss.item() <= 0.:
             alphas = torch.zeros_like(alphas)
@@ -185,18 +199,19 @@ class FindSubset_Vect_No_ValLoss(object):
 
         loader_val = DataLoader(CustomDataset(self.x_val, self.y_val, transform=None),\
             shuffle=False,batch_size=self.batch_size*20)
-        
+        breakpoint()
         for batch_idx in list(loader_tr.batch_sampler):
 
             inputs, targets, idxs = loader_tr.dataset[batch_idx]
             inputs, targets = inputs.to(self.device), targets.to(self.device)
-
+            # just expanding the delta over all the target shape
             ele_delta = self.delta.repeat(targets.shape[0]).to(self.device)
-        
+            # repeating 
             weights = flat.view(1,-1).repeat(targets.shape[0], 1)
             ele_alphas = alphas.detach().repeat(targets.shape[0]).to(self.device)
             #print(weights.shape)
 
+            # exponential averaging of the weights of the model???
             exp_avg_w = torch.zeros_like(weights)
             exp_avg_sq_w = torch.zeros_like(weights)
 
@@ -208,7 +223,7 @@ class FindSubset_Vect_No_ValLoss(object):
 
             bias_correction1 = 1.0 
             bias_correction2 = 1.0 
-
+            ########################## Trainining on each of the training data points ##############
             for i in range(p_epoch):
 
                 trn_loss_g = torch.sum(exten_inp*weights,dim=1) - targets
@@ -229,7 +244,7 @@ class FindSubset_Vect_No_ValLoss(object):
                 bias_correction2 *= beta2
                 step_size = (self.lr) * math.sqrt(1.0-bias_correction2) / (1.0-bias_correction1)
                 weights.addcdiv_(-step_size, exp_avg_w, denom)
-                
+            #####################################################    
             val_losses = 0.
             for batch_idx_val in list(loader_val.batch_sampler):
                     
@@ -256,10 +271,14 @@ class FindSubset_Vect_No_ValLoss(object):
 
         print("Finishing Element wise F")
 
+        #**************************************************************************************************
+        # Done calculating  F(w,α,{i})
+        #**************************************************************************************************
 
     def return_subset(self,theta_init,p_epoch,curr_subset,alphas,budget,batch,\
         step,w_exp_avg,w_exp_avg_sq,a_exp_avg,a_exp_avg_sq):
         
+        # The F_values that we have computed for each of the training points in the previous function at the end
         m_values = self.F_values.detach().clone() #torch.zeros(len(self.x_trn))
         
         self.model.load_state_dict(theta_init)
@@ -271,7 +290,8 @@ class FindSubset_Vect_No_ValLoss(object):
             shuffle=False,batch_size=batch)  
 
         sum_error = torch.nn.MSELoss(reduction='sum')       
-
+        
+        # just calculating the total training and validation loss over the entire batches F(w,α,S)
         with torch.no_grad():
 
             F_curr = 0.
@@ -317,7 +337,7 @@ class FindSubset_Vect_No_ValLoss(object):
 
         l = [torch.flatten(p) for p in self.model.state_dict().values()]
         flat = torch.cat(l).detach()
-
+        # Repeated calls to load train. Why ?
         loader_tr = DataLoader(CustomDataset_WithId(self.x_trn[curr_subset], self.y_trn[curr_subset],\
             transform=None),shuffle=False,batch_size=self.batch_size)
 
@@ -353,6 +373,7 @@ class FindSubset_Vect_No_ValLoss(object):
             bias_correction1 = beta1**step#1.0 
             bias_correction2 = beta2**step#1.0 
 
+            ############### I think it is similar to the line 7 of the algorithm of the paper where each element of set S is picked #############
             for i in range(p_epoch):
 
                 fin_val_loss_g = torch.zeros_like(weights).to(device_new)
@@ -416,14 +437,15 @@ class FindSubset_Vect_No_ValLoss(object):
                 trn_loss_g = torch.sum(exten_inp*weights,dim=1) - targets
                 fin_trn_loss_g = exten_inp*2*trn_loss_g[:,None]
 
+                # loss removing the ith element from the loss of total current set S 
                 fin_trn_loss_g = (sum_fin_trn_loss_g - fin_trn_loss_g)/rem_len
 
                 weight_grad = fin_trn_loss_g+ 2*rem_len*\
                     torch.cat((weights[:,:-1], torch.zeros((weights.shape[0],1),device=self.device)),dim=1)+\
-                        fin_val_loss_g*ele_alphas[:,None]
+                        fin_val_loss_g*ele_alphas[:,None] # gradient of the weights
 
                 #print(weight_grad[0])
-
+                ################################ Adam Optimizer Stuff?????  for primal weights #####################################
                 exp_avg_w.mul_(beta1).add_(1.0 - beta1, weight_grad)
                 exp_avg_sq_w.mul_(beta2).addcmul_(1.0 - beta2, weight_grad, weight_grad)
                 denom = exp_avg_sq_w.sqrt().add_(main_optimizer.param_groups[0]['eps'])
@@ -432,7 +454,7 @@ class FindSubset_Vect_No_ValLoss(object):
                 bias_correction2 *= beta2
                 step_size = (self.lr)* math.sqrt(1.0-bias_correction2) / (1.0-bias_correction1)
                 weights.addcdiv_(-step_size, exp_avg_w, denom)
-                
+                ################################ Adam Optimizer Stuff????? #####################################
                 #weights = weights - self.lr*(weight_grad)
 
                 '''print(self.lr)
@@ -461,6 +483,7 @@ class FindSubset_Vect_No_ValLoss(object):
                     del exten_val,exten_val_y,val_loss_p,inputs_val, targets_val
                     torch.cuda.empty_cache()
 
+                ################################ Adam Optimizer Stuff?????  for dual alphas #####################################
                 val_losses = val_losses.to(self.device)
 
                 alpha_grad = val_losses/len(loader_val.batch_sampler)-ele_delta
@@ -470,11 +493,14 @@ class FindSubset_Vect_No_ValLoss(object):
                 denom = exp_avg_sq_a.sqrt().add_(main_optimizer.param_groups[0]['eps'])
                 ele_alphas.addcdiv_(step_size, exp_avg_a, denom)
                 ele_alphas[ele_alphas < 0] = 0
+                ################################ Adam Optimizer Stuff?????  #####################################
+
                 #print(ele_alphas[0])
 
                 #ele_alphas = ele_alphas + self.lr*(torch.mean(val_loss_p*val_loss_p,dim=0)-ele_delta)
 
             val_losses = 0.
+            ############## Now they have trained the model on the Set S other than the element i Now just evaluating the given function
             for batch_idx_val in list(loader_val.batch_sampler):
                     
                 inputs_val, targets_val = loader_val.dataset[batch_idx_val]
@@ -506,19 +532,19 @@ class FindSubset_Vect_No_ValLoss(object):
             trn_loss_ind = torch.sum(exten_inp*weights,dim=1) - targets
 
             trn_losses -= trn_loss_ind*trn_loss_ind
-
+            ####################  This is the line 9 difference of the function f calculation part
             abs_value = F_curr - (trn_losses + self.lam*reg*rem_len \
                 + (val_losses/len(loader_val.batch_sampler)-ele_delta)*ele_alphas) 
 
             neg_ind = ((abs_value ) < 0).nonzero().view(-1)
 
             abs_value [neg_ind] = torch.max(self.F_values)
-
+            ######################## setting the m value as given in line 9 of the algorithm
             m_values[torch.tensor(curr_subset, dtype = torch.long)[b_idxs*self.batch_size:(b_idxs+1)*self.batch_size]]\
                  = abs_value
 
             b_idxs +=1
-
+        #################3 returning the topk elements in the m set #########################################3
         values,indices =m_values.topk(budget,largest=False)
 
         return list(indices.cpu().numpy())

@@ -10,11 +10,11 @@ import torch.nn as nn
 import torch.optim as optim
 
 from sklearn.model_selection import train_test_split
-from utils.custom_dataset import load_std_regress_data, CustomDataset, load_dataset_custom
-from utils.Create_Slices import get_slices
-from model.LinearRegression import RegressionNet, LogisticNet
-from model.SELCON import FindSubset_Vect_No_ValLoss as FindSubset_Vect, FindSubset_Vect_TrnLoss
-from model.facility_location import run_stochastic_Facloc
+from SELCON.utils.custom_dataset import load_std_regress_data, CustomDataset, load_dataset_custom
+from SELCON.utils.Create_Slices import get_slices
+from SELCON.model.LinearRegression import RegressionNet, LogisticNet
+from SELCON.model.SELCON import FindSubset_Vect_No_ValLoss as FindSubset_Vect, FindSubset_Vect_TrnLoss
+from SELCON.model.facility_location import run_stochastic_Facloc
 
 from torch.utils.data import DataLoader
 
@@ -366,7 +366,7 @@ class Regression():
 
         fsubset_d = FindSubset_Vect(x_trn[sub_rand_idxs], y_trn[sub_rand_idxs], x_val, y_val,main_model,\
             criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size)
-
+        ##############################  This is done to calculate the F(phi) and F({i})
         fsubset_d.precompute(int(num_epochs/4),sub_epoch,alpha_orig)
 
         '''main_model.load_state_dict(cached_state_dict)
@@ -528,7 +528,7 @@ class Regression():
                 #print(criterion(scores, targets) , reg_lambda*l2_reg*len(idxs) ,multiplier)
                 #print(main_optimizer.param_groups)#[0]['lr'])
 
-
+#################################### selecting the subsets at each of this timestamp ###############################################3
             if ((i + 1) % self.select_every == 0):
 
                 cached_state_dict = copy.deepcopy(main_model.state_dict())

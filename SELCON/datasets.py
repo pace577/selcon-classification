@@ -8,10 +8,10 @@ import time
 import torch
 from pathlib import Path
 
-from utils.custom_dataset import load_std_regress_data, load_dataset_custom
-from utils.Create_Slices import get_slices
+from SELCON.utils.custom_dataset import load_std_regress_data, load_dataset_custom
+from SELCON.utils.Create_Slices import get_slices
 
-from utils.time_series import load_time_series_data
+from SELCON.utils.time_series import load_time_series_data
 
 torch.manual_seed(42)
 np.random.seed(42)
