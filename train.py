@@ -5,8 +5,8 @@ sys.path.append(os.path.join(".","SELCON"))
 
 # print(sys.path)
 from SELCON.datasets import load_def_data
-from SELCON.logistic import Regression
-reg = Regression()
+from SELCON.logistic import Classification
+reg = Classification(num_cls=1)
 # Load data and prepare linear regression model
 # (x_train, y_train), (x_val, y_val), (x_test, y_test) = load_def_data("cadata")
 (x_train,y_train),(x_val,y_val),(x_test,y_test)=load_def_data('Custom_Data',class_sep=1)

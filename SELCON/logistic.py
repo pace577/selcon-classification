@@ -21,8 +21,9 @@ from torch.utils.data import DataLoader
 torch.manual_seed(42)
 np.random.seed(42)
 
-class Regression():
-    def __init__(self):
+class Classification():
+    def __init__(self, num_cls):
+        self.num_cls = num_cls
         self.select_every = 35
         self.reg_lambda = 1e-5
         self.val_loss = 0
@@ -50,7 +51,6 @@ class Regression():
         sub_epoch = 3
         
         N, M = x_trn.shape
-        N, M1 = y_trn.shape
         bud = int(fraction * N)
         print("Budget, fraction and N:", bud, fraction, N)
         train_batch_size = min(bud,1000)
@@ -65,7 +65,7 @@ class Regression():
         criterion = nn.BCELoss()
 
         # Initialise model
-        main_model = LogisticRegression(M,M1)
+        main_model = LogisticRegression(M, self.num_cls)
         main_model.apply(self.weight_reset)
 
         #for p in main_model.parameters():
@@ -307,7 +307,6 @@ class Regression():
         
         # N, M = x_trn.shape
         N, M = x_trn.shape
-        # N, M1 = y_trn.shape
         bud = int(fraction * N)
         print("Budget, fraction and N:", bud, fraction, N)
         train_batch_size = min(bud,1000)
@@ -321,7 +320,7 @@ class Regression():
 
         criterion = nn.BCELoss()
 
-        main_model = LogisticRegression(M,1)
+        main_model = LogisticRegression(M, self.num_cls)
         main_model.apply(self.weight_reset)
 
         #for p in main_model.parameters():
