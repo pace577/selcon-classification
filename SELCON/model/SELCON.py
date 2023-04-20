@@ -9,7 +9,7 @@ from utils.custom_dataset import CustomDataset_WithId, CustomDataset
 from torch.utils.data import DataLoader
 
 
-class FindSubset_Vect_No_ValLoss(object):
+class FindSubset_Vect(object):
     def __init__(self, x_trn, y_trn, x_val, y_val,model,loss,device,delta,lr,lam,batch,fair=True):
         
         self.x_trn = x_trn

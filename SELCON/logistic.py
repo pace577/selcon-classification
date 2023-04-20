@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 from utils.custom_dataset import load_std_regress_data, CustomDataset, load_dataset_custom
 from utils.Create_Slices import get_slices
 from model.classification import LogisticRegression
-from model.SELCON import FindSubset_Vect_No_ValLoss as FindSubset_Vect
+from model.SELCON import FindSubset_Vect
 from model.facility_location import run_stochastic_Facloc
 
 from torch.utils.data import DataLoader
