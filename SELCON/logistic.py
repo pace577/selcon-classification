@@ -249,24 +249,8 @@ class Classification():
         
         with torch.no_grad():
 
-            #self.val_loss = 0.
-            for batch_idx in list(loader_val.batch_sampler):
 
-                inputs, targets = loader_val.dataset[batch_idx]
-                inputs, targets = inputs.to(self.device), targets.to(self.device)
-
-                val_out = main_model(inputs)
-                '''if is_time:
-                    val_out = sc_trans.inverse_transform(val_out.cpu().numpy())
-                    val_out = torch.from_numpy(val_out).float()'''
-
-                if batch_idx[0] == 0:
-                    e_val_loss = no_red_error(val_out, targets)
-
-                else:
-                    batch_val_loss = no_red_error(val_out, targets)
-                    e_val_loss = torch.cat((e_val_loss, batch_val_loss),dim= 0)
-
+            e_val_loss = self.eval_and_return_loss(main_model, loader_val, no_red_error)
             #val_loss /= len(loader_val.batch_sampler)
             self.val_loss = torch.mean(e_val_loss)
             # print(list(e_val_loss.cpu().numpy()))
@@ -276,25 +260,8 @@ class Classification():
                 loader_tst = DataLoader(CustomDataset(x_tst, y_tst,transform=None),shuffle=False,\
                                         batch_size=self.batch_size)
 
-                for batch_idx in list(loader_tst.batch_sampler):
-
-                    inputs, targets = loader_tst.dataset[batch_idx]
-                    inputs, targets = inputs.to(self.device), targets.to(self.device)
-
-                    outputs = main_model(inputs)
-                    '''if is_time:
-                        outputs = sc_trans.inverse_transform(outputs.cpu().numpy())
-                        outputs = torch.from_numpy(outputs).float()'''
-                    #test_loss += criterion(outputs, targets)
-
-                    if batch_idx[0] == 0:
-                        e_tst_loss = no_red_error(outputs, targets)
-
-                    else:
-                        batch_tst_loss = no_red_error(outputs, targets)
-                        e_tst_loss = torch.cat((e_tst_loss, batch_tst_loss),dim= 0)
-
-                #test_loss /= len(loader_tst.batch_sampler)    
+                #test_loss /= len(loader_tst.batch_sampler)
+                e_tst_loss = self.eval_and_return_loss(main_model, loader_tst, no_red_error)
                 self.test_loss = torch.mean(e_tst_loss)
                 self.test_loss_std = torch.std(e_tst_loss)
 
@@ -322,9 +289,6 @@ class Classification():
 
         main_model = LogisticRegression(M, self.num_cls)
         main_model.apply(self.weight_reset)
-
-        #for p in main_model.parameters():
-        #    print(p.data)
 
         main_model = main_model.to(self.device)
 
@@ -406,6 +370,8 @@ class Classification():
         mul = 1
         lr_count = 0
         #while (True):
+
+        ### Line 5 is here or inside the "FindSubset" function?
         for i in range(num_epochs):
 
             # inputs, targets = x_trn[idxs].to(self.device), y_trn[idxs].to(self.device)
@@ -667,51 +633,39 @@ class Classification():
             print("\nFinal SubsetTrn and FullTrn Loss:", sub_trn_loss.item(),full_trn_loss.item(),file=logfile)'''
 
             #val_loss = 0.
-            for batch_idx in list(loader_val.batch_sampler):
-
-
-                inputs, targets = loader_val.dataset[batch_idx]
-                inputs, targets = inputs.to(self.device), targets.to(self.device)
-
-                val_out = main_model(inputs)
-                '''if is_time:
-                    val_out = sc_trans.inverse_transform(val_out.cpu().numpy())
-                    val_out = torch.from_numpy(val_out).float()'''
-
-                if batch_idx[0] == 0:
-                    e_val_loss = no_red_error(val_out, targets)
-
-                else:
-                    batch_val_loss = no_red_error(val_out, targets)
-                    e_val_loss = torch.cat((e_val_loss, batch_val_loss),dim= 0)
-
+            e_val_loss = self.eval_and_return_loss(main_model, loader_val, no_red_error)
             #val_loss /= len(loader_val.batch_sampler)
             self.val_loss = torch.mean(e_val_loss)
             # print(list(e_val_loss.cpu().numpy()),file=modelfile)
 
             if(default == True):
-                for batch_idx in list(loader_tst.batch_sampler):
-
-                    inputs, targets = loader_tst.dataset[batch_idx]
-                    inputs, targets = inputs.to(self.device), targets.to(self.device)
-
-                    outputs = main_model(inputs)
-                    '''if is_time:
-                        outputs = sc_trans.inverse_transform(outputs.cpu().numpy())
-                        outputs = torch.from_numpy(outputs).float()'''
-                    #test_loss += criterion(outputs, targets)
-
-                    if batch_idx[0] == 0:
-                        e_tst_loss = no_red_error(outputs, targets)
-
-                    else:
-                        batch_tst_loss = no_red_error(outputs, targets)
-                        e_tst_loss = torch.cat((e_tst_loss, batch_tst_loss),dim= 0)
+                e_tst_loss = self.eval_and_return_loss(main_model, loader_tst, no_red_error)
 
                 #test_loss /= len(loader_tst.batch_sampler)    
                 self.test_loss = torch.mean(e_tst_loss)
                 self.test_loss_std = torch.std(e_tst_loss)
-                # print(list(e_tst_loss.cpu().numpy()),file=modelfile)    
+                # print(list(e_tst_loss.cpu().numpy()),file=modelfile)
+
+    def eval_and_return_loss(self, model, dataloader, no_red_loss_fn):
+        """Return a tensor of losses given dataloader"""
+        for batch_idx in list(dataloader.batch_sampler):
+
+            inputs, targets = dataloader.dataset[batch_idx]
+            inputs, targets = inputs.to(self.device), targets.to(self.device)
+
+            outputs = model(inputs)
+            '''if is_time:
+                outputs = sc_trans.inverse_transform(outputs.cpu().numpy())
+                outputs = torch.from_numpy(outputs).float()'''
+            #test_loss += criterion(outputs, targets)
+
+            if batch_idx[0] == 0:
+                epoch_loss = no_red_loss_fn(outputs, targets)
+
+            else:
+                batch_loss = no_red_loss_fn(outputs, targets)
+                epoch_loss = torch.cat((epoch_loss, batch_loss),dim= 0)
+        return epoch_loss
        
     def val_loss(self):
         return self.val_loss.cpu().numpy()
