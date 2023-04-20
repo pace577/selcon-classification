@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 from utils.custom_dataset import load_std_regress_data, CustomDataset, load_dataset_custom
 from utils.Create_Slices import get_slices
 from model.classification import LogisticRegression
-from model.SELCON import FindSubset_Vect_No_ValLoss as FindSubset_Vect, FindSubset_Vect_TrnLoss
+from model.SELCON import FindSubset_Vect_No_ValLoss as FindSubset_Vect
 from model.facility_location import run_stochastic_Facloc
 
 from torch.utils.data import DataLoader
@@ -108,13 +108,13 @@ class Classification():
 
         if fair:
             fsubset_d = FindSubset_Vect(x_trn[sub_rand_idxs], y_trn[sub_rand_idxs], x_val, y_val,main_model,\
-                criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size)
+                self.criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size)
             fsubset_d.precompute(int(num_epochs/4),sub_epoch,alpha_orig)
         else:
             # fsubset_d = FindSubset_Vect_TrnLoss(x_trn[sub_rand_idxs], y_trn[sub_rand_idxs], x_val, y_val,main_model,\
             #     criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size)
             fsubset_d = FindSubset_Vect(x_trn[sub_rand_idxs], y_trn[sub_rand_idxs], x_val, y_val,main_model,\
-                                        criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size, fair=False)
+                                        self.criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size, fair=False)
             fsubset_d.precompute(int(num_epochs/4),sub_epoch,torch.randn_like(deltas,device=self.device))
 
 
