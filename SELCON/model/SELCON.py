@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 
 class FindSubset_Vect_No_ValLoss(object):
-    def __init__(self, x_trn, y_trn, x_val, y_val,model,loss,device,delta,lr,lam,batch):
+    def __init__(self, x_trn, y_trn, x_val, y_val,model,loss,device,delta,lr,lam,batch,fair=True):
         
         self.x_trn = x_trn
         self.y_trn = y_trn
@@ -28,6 +28,7 @@ class FindSubset_Vect_No_ValLoss(object):
         self.lam = lam
         #self.optimizer = optimizer
         self.batch_size = batch
+        self.fair = fair
 
         torch.manual_seed(42)
         torch.cuda.manual_seed(42)
@@ -39,9 +40,11 @@ class FindSubset_Vect_No_ValLoss(object):
         print("pred ",pred.shape)
         print("actual ",pred.shape)
         return torch.matmul(X_t,pred-actual)
+
     def logistic(self,y):
         m=torch.nn.Sigmoid()
         return m(y)
+
     def precompute(self,f_pi_epoch,p_epoch,alphas):
         '''
         
@@ -63,7 +66,6 @@ class FindSubset_Vect_No_ValLoss(object):
         #alphas.requires_grad = False
         loader_val = DataLoader(CustomDataset(self.x_val, self.y_val, device = self.device, transform=None),\
             shuffle=False, batch_size=self.batch_size)
-            
 
         #Compute F_phi
         #for i in range(f_pi_epoch):
@@ -287,8 +289,9 @@ class FindSubset_Vect_No_ValLoss(object):
         loader_tr = DataLoader(CustomDataset_WithId(self.x_trn[curr_subset], self.y_trn[curr_subset],\
             transform=None),shuffle=False,batch_size=batch)
 
-        loader_val = DataLoader(CustomDataset(self.x_val, self.y_val,device = self.device,transform=None),\
-            shuffle=False,batch_size=batch)  
+        if self.fair:
+            loader_val = DataLoader(CustomDataset(self.x_val, self.y_val,device = self.device,transform=None),\
+                shuffle=False,batch_size=batch)
 
         sum_error = torch.nn.BCELoss(reduction='sum')       
 
@@ -313,21 +316,24 @@ class FindSubset_Vect_No_ValLoss(object):
             flatt = torch.cat(l)
             l2_reg = torch.sum(flatt[:-1]*flatt[:-1])
 
-            valloss = 0.
-            for batch_idx in list(loader_val.batch_sampler):
-            
-                inputs, targets = loader_val.dataset[batch_idx]
-                inputs, targets = inputs.to(self.device), targets.to(self.device)
+            if self.fair:
+                valloss = 0.
+                for batch_idx in list(loader_val.batch_sampler):
 
-                scores = self.model(inputs)
-                valloss += self.criterion(scores, targets).item() 
-            
-            constraint = valloss/len(loader_val.batch_sampler) - self.delta
-            multiplier = alphas*constraint #torch.dot(alphas,constraint)
+                    inputs, targets = loader_val.dataset[batch_idx]
+                    inputs, targets = inputs.to(self.device), targets.to(self.device)
 
-            F_curr += (self.lam*l2_reg*len(curr_subset) + multiplier).item()
+                    scores = self.model(inputs)
+                    valloss += self.criterion(scores, targets).item()
 
-        val_mul = multiplier.item()
+                constraint = valloss/len(loader_val.batch_sampler) - self.delta
+                multiplier = alphas*constraint #torch.dot(alphas,constraint)
+
+                F_curr += (self.lam*l2_reg*len(curr_subset) + multiplier).item()
+            else:
+                F_curr += (self.lam*l2_reg*len(curr_subset)).item() #+ multiplier).item()
+
+        # val_mul = multiplier.item()
         
         #print(self.lam*l2_reg*len(curr_subset), multiplier)
         #print(F_curr)
@@ -357,16 +363,15 @@ class FindSubset_Vect_No_ValLoss(object):
             inputs, targets, _ = loader_tr.dataset[batch_idx]
             inputs, targets = inputs.to(self.device), targets.to(self.device)
 
-            ele_delta = self.delta.repeat(targets.shape[0]).to(self.device)
-        
             weights = flat.repeat(targets.shape[0], 1)
-            ele_alphas = alphas.detach().repeat(targets.shape[0]).to(self.device)
-
             exp_avg_w = w_exp_avg.repeat(targets.shape[0], 1)#torch.zeros_like(weights)
             exp_avg_sq_w = w_exp_avg_sq.repeat(targets.shape[0], 1) #torch.zeros_like(weights)
 
-            exp_avg_a = a_exp_avg.repeat(targets.shape[0])#torch.zeros_like(ele_alphas)
-            exp_avg_sq_a = a_exp_avg_sq.repeat(targets.shape[0]) #torch.zeros_like(ele_alphas)
+            if self.fair:
+                ele_delta = self.delta.repeat(targets.shape[0]).to(self.device)
+                ele_alphas = alphas.detach().repeat(targets.shape[0]).to(self.device)
+                exp_avg_a = a_exp_avg.repeat(targets.shape[0])#torch.zeros_like(ele_alphas)
+                exp_avg_sq_a = a_exp_avg_sq.repeat(targets.shape[0]) #torch.zeros_like(ele_alphas)
 
             exten_inp = torch.cat((inputs,torch.ones(inputs.shape[0],device=self.device).view(-1,1)),dim=1)
 
@@ -375,40 +380,41 @@ class FindSubset_Vect_No_ValLoss(object):
 
             for i in range(p_epoch):
 
-                fin_val_loss_g = torch.zeros_like(weights).to(device_new)
-                #val_losses = torch.zeros_like(ele_delta).to(device_new)
-                for batch_idx_val in list(loader_val.batch_sampler):
-                    
-                    inputs_val, targets_val = loader_val.dataset[batch_idx_val]
-                    inputs_val, targets_val = inputs_val.to(self.device), targets_val.to(self.device)
+                if self.fair:
+                    fin_val_loss_g = torch.zeros_like(weights).to(device_new)
+                    #val_losses = torch.zeros_like(ele_delta).to(device_new)
+                    for batch_idx_val in list(loader_val.batch_sampler):
 
-                    exten_val = torch.cat((inputs_val,torch.ones(inputs_val.shape[0],device=self.device)\
-                        .view(-1,1)),dim=1).to(device_new)
-                    #print(exten_val.shape)
+                        inputs_val, targets_val = loader_val.dataset[batch_idx_val]
+                        inputs_val, targets_val = inputs_val.to(self.device), targets_val.to(self.device)
 
-                    exten_val_y = targets_val.view(-1,1).repeat(1,min(self.batch_size,\
-                        targets.shape[0])).to(device_new)
-                    #print(exten_val_y[0])
-                
-                    # val_loss_p = 2*(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))\
-                    #      - exten_val_y) 
-                    #val_losses += torch.mean(val_loss_p*val_loss_p,dim=0)
-                    #val_loss_g = torch.unsqueeze(val_loss_p, dim=2).repeat(1,1,flat.shape[0])
-                    #print(val_loss_g[0][0])
+                        exten_val = torch.cat((inputs_val,torch.ones(inputs_val.shape[0],device=self.device)\
+                            .view(-1,1)),dim=1).to(device_new)
+                        #print(exten_val.shape)
 
-                    #mod_val = torch.unsqueeze(exten_val, dim=1).repeat(1,targets.shape[0],1)
-                    #print(mod_val[0])
-                    # fin_val_loss_g += torch.mean(val_loss_p[:,:,None]*exten_val[:,None,:],dim=0)
-                    # print("")
-                    val_loss_p = self.criterion(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y)
-                    print(fin_val_loss_g.shape)
-                    fin_val_loss_g +=self.grad_logistic(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y,exten_val).T #changed
+                        exten_val_y = targets_val.view(-1,1).repeat(1,min(self.batch_size,\
+                            targets.shape[0])).to(device_new)
+                        #print(exten_val_y[0])
 
-                    del exten_val,exten_val_y,val_loss_p,inputs_val, targets_val #mod_val,val_loss_g,
-                    torch.cuda.empty_cache()
+                        # val_loss_p = 2*(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))\
+                        #      - exten_val_y)
+                        #val_losses += torch.mean(val_loss_p*val_loss_p,dim=0)
+                        #val_loss_g = torch.unsqueeze(val_loss_p, dim=2).repeat(1,1,flat.shape[0])
+                        #print(val_loss_g[0][0])
 
-                fin_val_loss_g /= len(loader_val.batch_sampler)
-                fin_val_loss_g = fin_val_loss_g.to(self.device)
+                        #mod_val = torch.unsqueeze(exten_val, dim=1).repeat(1,targets.shape[0],1)
+                        #print(mod_val[0])
+                        # fin_val_loss_g += torch.mean(val_loss_p[:,:,None]*exten_val[:,None,:],dim=0)
+                        # print("")
+                        val_loss_p = self.criterion(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y)
+                        print(fin_val_loss_g.shape)
+                        fin_val_loss_g +=self.grad_logistic(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y,exten_val).T #changed
+
+                        del exten_val,exten_val_y,val_loss_p,inputs_val, targets_val #mod_val,val_loss_g,
+                        torch.cuda.empty_cache()
+
+                    fin_val_loss_g /= len(loader_val.batch_sampler)
+                    fin_val_loss_g = fin_val_loss_g.to(self.device)
 
                 sum_fin_trn_loss_g = torch.zeros_like(weights).to(device_new)
                 for batch_idx_trn in list(loader_tr.batch_sampler):
@@ -451,9 +457,14 @@ class FindSubset_Vect_No_ValLoss(object):
 
                 fin_trn_loss_g = (sum_fin_trn_loss_g - fin_trn_loss_g)/rem_len
 
-                weight_grad = fin_trn_loss_g+ 2*rem_len*\
-                    torch.cat((weights[:,:-1], torch.zeros((weights.shape[0],1),device=self.device)),dim=1)+\
-                        fin_val_loss_g*ele_alphas[:,None]
+                if self.fair:
+                    weight_grad = fin_trn_loss_g+ 2*rem_len*\
+                        torch.cat((weights[:,:-1], torch.zeros((weights.shape[0],1),device=self.device)),dim=1)+\
+                            fin_val_loss_g*ele_alphas[:,None]
+                else:
+                    weight_grad = fin_trn_loss_g+ 2*rem_len*\
+                        torch.cat((weights[:,:-1], torch.zeros((weights.shape[0],1),device=self.device)),dim=1)
+
 
                 #print(weight_grad[0])
 
@@ -473,54 +484,56 @@ class FindSubset_Vect_No_ValLoss(object):
 
                 #print(weights[0])
 
-                val_losses = torch.zeros_like(ele_delta).to(device_new)
+                if self.fair:
+                    val_losses = torch.zeros_like(ele_delta).to(device_new)
+                    for batch_idx_val in list(loader_val.batch_sampler):
+
+                        inputs_val, targets_val = loader_val.dataset[batch_idx_val]
+                        inputs_val, targets_val = inputs_val.to(self.device), targets_val.to(self.device)
+
+                        exten_val = torch.cat((inputs_val,torch.ones(inputs_val.shape[0],device=self.device)\
+                            .view(-1,1)),dim=1).to(device_new)
+                        #print(exten_val.shape)
+
+                        exten_val_y = targets_val.view(-1,1).repeat(1,min(self.batch_size,\
+                            targets.shape[0])).to(device_new)
+                        #print(exten_val_y[0])
+
+                        # val_loss_p = torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))\
+                        #      - exten_val_y #
+                        # val_losses += torch.mean(val_loss_p*val_loss_p,dim=0)
+                        val_loss_p = self.criterion(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y)
+                        val_losses += torch.mean(val_loss_p,dim=0)
+
+                        del exten_val,exten_val_y,val_loss_p,inputs_val, targets_val
+                        torch.cuda.empty_cache()
+
+                    val_losses = val_losses.to(self.device)
+
+                    alpha_grad = val_losses/len(loader_val.batch_sampler)-ele_delta
+
+                    exp_avg_a.mul_(beta1).add_(1.0 - beta1, alpha_grad)
+                    exp_avg_sq_a.mul_(beta2).addcmul_(1.0 - beta2, alpha_grad, alpha_grad)
+                    denom = exp_avg_sq_a.sqrt().add_(main_optimizer.param_groups[0]['eps'])
+                    ele_alphas.addcdiv_(step_size, exp_avg_a, denom)
+                    ele_alphas[ele_alphas < 0] = 0
+                    #print(ele_alphas[0])
+
+                    #ele_alphas = ele_alphas + self.lr*(torch.mean(val_loss_p*val_loss_p,dim=0)-ele_delta)
+
+            if self.fair:
+                val_losses = 0.
                 for batch_idx_val in list(loader_val.batch_sampler):
-                    
+
                     inputs_val, targets_val = loader_val.dataset[batch_idx_val]
                     inputs_val, targets_val = inputs_val.to(self.device), targets_val.to(self.device)
 
-                    exten_val = torch.cat((inputs_val,torch.ones(inputs_val.shape[0],device=self.device)\
-                        .view(-1,1)),dim=1).to(device_new)
-                    #print(exten_val.shape)
+                    exten_val = torch.cat((inputs_val,torch.ones(inputs_val.shape[0],device=self.device).view(-1,1)),dim=1)
+                    exten_val_y = targets_val.view(-1,1).repeat(1,targets.shape[0])
 
-                    exten_val_y = targets_val.view(-1,1).repeat(1,min(self.batch_size,\
-                        targets.shape[0])).to(device_new)
-                    #print(exten_val_y[0])
-                
-                    # val_loss_p = torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))\
-                    #      - exten_val_y #
-                    # val_losses += torch.mean(val_loss_p*val_loss_p,dim=0)
-                    val_loss_p = self.criterion(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y)
-                    val_losses += torch.mean(val_loss_p,dim=0)
-
-                    del exten_val,exten_val_y,val_loss_p,inputs_val, targets_val
-                    torch.cuda.empty_cache()
-
-                val_losses = val_losses.to(self.device)
-
-                alpha_grad = val_losses/len(loader_val.batch_sampler)-ele_delta
-
-                exp_avg_a.mul_(beta1).add_(1.0 - beta1, alpha_grad)
-                exp_avg_sq_a.mul_(beta2).addcmul_(1.0 - beta2, alpha_grad, alpha_grad)
-                denom = exp_avg_sq_a.sqrt().add_(main_optimizer.param_groups[0]['eps'])
-                ele_alphas.addcdiv_(step_size, exp_avg_a, denom)
-                ele_alphas[ele_alphas < 0] = 0
-                #print(ele_alphas[0])
-
-                #ele_alphas = ele_alphas + self.lr*(torch.mean(val_loss_p*val_loss_p,dim=0)-ele_delta)
-
-            val_losses = 0.
-            for batch_idx_val in list(loader_val.batch_sampler):
-                    
-                inputs_val, targets_val = loader_val.dataset[batch_idx_val]
-                inputs_val, targets_val = inputs_val.to(self.device), targets_val.to(self.device)
-
-                exten_val = torch.cat((inputs_val,torch.ones(inputs_val.shape[0],device=self.device).view(-1,1)),dim=1)
-                exten_val_y = targets_val.view(-1,1).repeat(1,targets.shape[0])
-                
-                # val_loss = torch.matmul(exten_val,torch.transpose(weights, 0, 1)) - exten_val_y
-                val_loss = self.criterion(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y)
-                val_losses+= torch.mean(val_loss,dim=0)
+                    # val_loss = torch.matmul(exten_val,torch.transpose(weights, 0, 1)) - exten_val_y
+                    val_loss = self.criterion(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y)
+                    val_losses+= torch.mean(val_loss,dim=0)
             
             reg = torch.sum(weights[:,:-1]*weights[:,:-1],dim=1)
 
@@ -549,8 +562,11 @@ class FindSubset_Vect_No_ValLoss(object):
 
             trn_losses -= trn_loss_ind
 
-            abs_value = F_curr - (trn_losses + self.lam*reg*rem_len \
-                + (val_losses/len(loader_val.batch_sampler)-ele_delta)*ele_alphas) 
+            if self.fair:
+                abs_value = F_curr - (trn_losses + self.lam*reg*rem_len \
+                    + (val_losses/len(loader_val.batch_sampler)-ele_delta)*ele_alphas)
+            else:
+                abs_value = F_curr - (trn_losses + self.lam*reg*rem_len)
 
             neg_ind = ((abs_value ) < 0).nonzero().view(-1)
 

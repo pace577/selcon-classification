@@ -111,8 +111,10 @@ class Classification():
                 criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size)
             fsubset_d.precompute(int(num_epochs/4),sub_epoch,alpha_orig)
         else:
-            fsubset_d = FindSubset_Vect_TrnLoss(x_trn[sub_rand_idxs], y_trn[sub_rand_idxs], x_val, y_val,main_model,\
-                criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size)
+            # fsubset_d = FindSubset_Vect_TrnLoss(x_trn[sub_rand_idxs], y_trn[sub_rand_idxs], x_val, y_val,main_model,\
+            #     criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size)
+            fsubset_d = FindSubset_Vect(x_trn[sub_rand_idxs], y_trn[sub_rand_idxs], x_val, y_val,main_model,\
+                                        criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size, fair=False)
             fsubset_d.precompute(int(num_epochs/4),sub_epoch,torch.randn_like(deltas,device=self.device))
 
 
@@ -306,8 +308,10 @@ class Classification():
                     d_sub_idxs = fsubset_d.return_subset(clone_dict,sub_epoch,current_idxs,alpha_orig,bud,\
                         train_batch_size,step,w_exp_avg,w_exp_avg_sq,a_exp_avg,a_exp_avg_sq)#,main_optimizer,dual_optimizer)
                 else:
-                    d_sub_idxs = fsubset_d.return_subset(clone_dict,sub_epoch,current_idxs,\
-                        bud,train_batch_size,step,w_exp_avg,w_exp_avg_sq)
+                    # d_sub_idxs = fsubset_d.return_subset(clone_dict,sub_epoch,current_idxs,\
+                    #     bud,train_batch_size,step,w_exp_avg,w_exp_avg_sq)
+                    d_sub_idxs = fsubset_d.return_subset(clone_dict,sub_epoch,current_idxs,None,bud,\
+                                                         train_batch_size,step,w_exp_avg,w_exp_avg_sq,None,None)#,main_optimizer,dual_optimizer)
 
                 '''clone_dict = copy.deepcopy(cached_state_dict)
                 alpha_orig = copy.deepcopy(alphas)
