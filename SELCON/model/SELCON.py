@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import copy
 
-from SELCON.utils.custom_dataset import CustomDataset_WithId, CustomDataset
+from utils.custom_dataset import CustomDataset_WithId, CustomDataset
 from torch.utils.data import DataLoader
 
 
