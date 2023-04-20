@@ -35,6 +35,9 @@ class FindSubset_Vect_No_ValLoss(object):
 
     def grad_logistic(self,pred,actual,X):
         X_t = torch.transpose(X, 0, 1)
+        print("X_t shape: ", X_t.shape)
+        print("pred ",pred.shape)
+        print("actual ",pred.shape)
         return torch.matmul(X_t,pred-actual)
     def logistic(self,y):
         m=torch.nn.Sigmoid()
@@ -396,8 +399,10 @@ class FindSubset_Vect_No_ValLoss(object):
                     #mod_val = torch.unsqueeze(exten_val, dim=1).repeat(1,targets.shape[0],1)
                     #print(mod_val[0])
                     # fin_val_loss_g += torch.mean(val_loss_p[:,:,None]*exten_val[:,None,:],dim=0)
+                    # print("")
                     val_loss_p = self.criterion(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y)
-                    fin_trn_loss_g =self.grad_logistic(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new)))[:,:,None].T,exten_val_y.T,exten_val[:,None,:].T)
+                    print(fin_val_loss_g.shape)
+                    fin_val_loss_g +=self.grad_logistic(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y,exten_val).T #changed
 
                     del exten_val,exten_val_y,val_loss_p,inputs_val, targets_val #mod_val,val_loss_g,
                     torch.cuda.empty_cache()
@@ -530,7 +535,7 @@ class FindSubset_Vect_No_ValLoss(object):
                 #print(exten_val_y[0])
             
                 # trn_loss = torch.matmul(exten_trn,torch.transpose(weights, 0, 1)) - exten_trn_y
-                trn_loss = self.criterion(self.logistic(torch.matmul(exten_trn,weights.T)),exten_val_y)
+                trn_loss = self.criterion(self.logistic(torch.matmul(exten_trn,weights.T)),exten_trn_y)
                 
                 trn_losses+= torch.sum(trn_loss,dim=0)
 
@@ -539,7 +544,8 @@ class FindSubset_Vect_No_ValLoss(object):
             # print("external val y ",exten_val_y.shape)
             # print("weights ",weights.shape)
             # print("external inpu ",exten_inp.shape)
-            trn_loss_ind = self.criterion(self.logistic(torch.matmul(exten_inp,weights.T)),exten_val_y)
+            print("shape",targets.shape)
+            trn_loss_ind = self.criterion(self.logistic(torch.sum(torch.matmul(exten_inp,weights.T),dim=1)),targets)
 
             trn_losses -= trn_loss_ind
 
