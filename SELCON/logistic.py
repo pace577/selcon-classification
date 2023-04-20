@@ -22,8 +22,9 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 class Classification():
-    def __init__(self, num_cls):
+    def __init__(self, num_cls, criterion):
         self.num_cls = num_cls
+        self.criterion = criterion
         self.select_every = 35
         self.reg_lambda = 1e-5
         self.val_loss = 0
@@ -60,9 +61,9 @@ class Classification():
         
       # initialise index
         rand_idxs = list(np.random.choice(N, size=bud, replace=False))
-        idxs = rand_idxs
+        sub_idxs = rand_idxs
 
-        criterion = nn.BCELoss()
+        criterion = self.criterion()
 
         # Initialise model
         main_model = LogisticRegression(M, self.num_cls)
@@ -79,34 +80,22 @@ class Classification():
         #scheduler = torch.optim.lr_scheduler.MultiStepLR(main_optimizer, milestones=change, gamma=0.5)
         scheduler = optim.lr_scheduler.StepLR(main_optimizer, step_size=1, gamma=0.1)
 
-        #print(idxs)
+        #print(sub_idxs)
 
-        idxs.sort()
-        np.random.seed(42)
-        np_sub_idxs = np.array(idxs)
-        np.random.shuffle(np_sub_idxs)
-        loader_tr = DataLoader(CustomDataset(x_trn[np_sub_idxs], y_trn[np_sub_idxs],\
-                transform=None),shuffle=False,batch_size=train_batch_size)
 
-        loader_full_tr = DataLoader(CustomDataset(x_trn, y_trn,transform=None),shuffle=False,\
-            batch_size=train_batch_size)
-
-        loader_val = DataLoader(CustomDataset(x_val, y_val,transform=None),shuffle=False,\
-            batch_size=self.batch_size)
-        
         cached_state_dict = copy.deepcopy(main_model.state_dict())
 
         if self.psuedo_length == 1.0:
             sub_rand_idxs = [s for s in range(N)]
-            current_idxs = idxs
+            current_idxs = sub_idxs
         else:
             sub_rand_idxs = [s for s in range(N)]
-            new_ele = set(sub_rand_idxs).difference(set(idxs))
+            new_ele = set(sub_rand_idxs).difference(set(sub_idxs))
             sub_rand_idxs = list(np.random.choice(list(new_ele), size=int(self.psuedo_length*N), replace=False))
             
-            sub_rand_idxs = idxs + sub_rand_idxs
+            sub_rand_idxs = sub_idxs + sub_rand_idxs
 
-            current_idxs = [s for s in range(len(idxs))]
+            current_idxs = [s for s in range(len(sub_idxs))]
 
         fsubset_d = FindSubset_Vect_TrnLoss(x_trn[sub_rand_idxs], y_trn[sub_rand_idxs], x_val, y_val,main_model,\
             criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size)
@@ -116,7 +105,17 @@ class Classification():
         main_model.load_state_dict(cached_state_dict)
         
         print("Starting Subset of size ",fraction," with fairness Run!")
-        
+
+        sub_idxs.sort()
+        np.random.seed(42)
+        np_sub_idxs = np.array(sub_idxs)
+        np.random.shuffle(np_sub_idxs)
+        loader_tr = DataLoader(CustomDataset(x_trn[np_sub_idxs], y_trn[np_sub_idxs],\
+                transform=None),shuffle=False,batch_size=train_batch_size)
+
+        loader_val = DataLoader(CustomDataset(x_val, y_val,transform=None),shuffle=False,\
+            batch_size=self.batch_size)
+
         stop_count = 0
         prev_loss = 1000
         prev_loss2 = 1000
@@ -197,7 +196,7 @@ class Classification():
 
                 d_sub_idxs = list(np.array(sub_rand_idxs)[d_sub_idxs])
                 
-                new_ele = set(d_sub_idxs).difference(set(idxs))
+                new_ele = set(d_sub_idxs).difference(set(sub_idxs))
                 # print(len(new_ele),0.1*bud)
 
                 if len(new_ele) > 0.1*bud:
@@ -209,13 +208,13 @@ class Classification():
                     #stop_count = 0
                     lr_count = 0
 
-                idxs = d_sub_idxs
+                sub_idxs = d_sub_idxs
 
-                idxs.sort()
+                sub_idxs.sort()
 
-                #print(idxs[:10])
+                #print(sub_idxs[:10])
                 np.random.seed(42)
-                np_sub_idxs = np.array(idxs)
+                np_sub_idxs = np.array(sub_idxs)
                 np.random.shuffle(np_sub_idxs)
                 loader_tr = DataLoader(CustomDataset(x_trn[np_sub_idxs], y_trn[np_sub_idxs],\
                         transform=None),shuffle=False,batch_size=train_batch_size)
@@ -237,14 +236,14 @@ class Classification():
             prev_loss2 = prev_loss
             prev_loss = temp_loss
         
-        no_red_error = torch.nn.CrossEntropyLoss(reduction='none')
+        no_red_error = self.criterion(reduction='none')
 
         main_model.eval()
 
         l = [torch.flatten(p) for p in main_model.parameters()]
         flat = torch.cat(l)
 
-        print('Subset_fair',len(idxs))
+        print('Subset_fair',len(sub_idxs))
         # print(flat)
         
         with torch.no_grad():
@@ -272,7 +271,6 @@ class Classification():
 
         sub_epoch = 3
         
-        # N, M = x_trn.shape
         N, M = x_trn.shape
         bud = int(fraction * N)
         print("Budget, fraction and N:", bud, fraction, N)
@@ -285,7 +283,7 @@ class Classification():
         rand_idxs = list(np.random.choice(N, size=bud, replace=False))
         sub_idxs = rand_idxs
 
-        criterion = nn.BCELoss()
+        criterion = self.criterion()
 
         main_model = LogisticRegression(M, self.num_cls)
         main_model.apply(self.weight_reset)
@@ -357,10 +355,6 @@ class Classification():
         loader_val = DataLoader(CustomDataset(x_val, y_val,transform=None),shuffle=False,\
             batch_size=self.batch_size)
 
-        loader_tst = DataLoader(CustomDataset(x_tst, y_tst,transform=None),shuffle=False,\
-            batch_size=self.batch_size)
-
-        stop_epoch = num_epochs
 
         #for i in range(num_epochs):
         stop_count = 0
@@ -374,7 +368,7 @@ class Classification():
         ### Line 5 is here or inside the "FindSubset" function?
         for i in range(num_epochs):
 
-            # inputs, targets = x_trn[idxs].to(self.device), y_trn[idxs].to(self.device)
+            # inputs, targets = x_trn[sub_idxs].to(self.device), y_trn[idxs].to(self.device)
             #inputs, targets = x_trn[sub_idxs], y_trn[sub_idxs]
 
             temp_loss = 0.
@@ -422,7 +416,7 @@ class Classification():
                     '''if is_time:
                         val_out = sc_trans.inverse_transform(val_out.cpu().numpy())
                         val_out = torch.from_numpy(val_out).float()'''
-                    constraint += criterion(val_out, targets)            
+                    constraint += criterion(val_out, targets)
 
                 constraint /= len(loader_val.batch_sampler)
                 constraint = constraint - deltas
@@ -612,10 +606,7 @@ class Classification():
         self.subset_idx = sub_idxs
         #print(constraint)
         #print(alphas)
-        no_red_error = torch.nn.BCELoss(reduction='none')
-
-        #loader_tst = DataLoader(CustomDataset(x_tst, y_tst,transform=None),shuffle=False,\
-        #    batch_size=batch_size)
+        no_red_error = self.criterion(reduction='none')
 
         main_model.eval()
 
@@ -639,6 +630,8 @@ class Classification():
             # print(list(e_val_loss.cpu().numpy()),file=modelfile)
 
             if(default == True):
+                loader_tst = DataLoader(CustomDataset(x_tst, y_tst,transform=None),shuffle=False,\
+                                        batch_size=self.batch_size)
                 e_tst_loss = self.eval_and_return_loss(main_model, loader_tst, no_red_error)
 
                 #test_loss /= len(loader_tst.batch_sampler)    
