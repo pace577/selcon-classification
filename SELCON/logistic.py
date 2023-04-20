@@ -10,8 +10,8 @@ import torch.nn as nn
 import torch.optim as optim
 
 from sklearn.model_selection import train_test_split
-from utils.custom_dataset import load_std_regress_data, CustomDataset, load_dataset_custom
-from utils.Create_Slices import get_slices
+from SELCON.utils.custom_dataset import load_std_regress_data, CustomDataset, load_dataset_custom
+from SELCON.utils.Create_Slices import get_slices
 from model.LinearRegression import RegressionNet, LogisticNet,LogisticRegression
 from model.SELCON import FindSubset_Vect_No_ValLoss as FindSubset_Vect, FindSubset_Vect_TrnLoss
 from model.facility_location import run_stochastic_Facloc
@@ -62,7 +62,7 @@ class Regression():
         rand_idxs = list(np.random.choice(N, size=bud, replace=False))
         idxs = rand_idxs
 
-        criterion = nn.CrossEntropyLoss()
+        criterion = nn.BCELoss()
 
         # Initialise model
         main_model = LogisticRegression(M,M1)
@@ -237,7 +237,7 @@ class Regression():
             prev_loss2 = prev_loss
             prev_loss = temp_loss
         
-        no_red_error = torch.nn.MSELoss(reduction='none')
+        no_red_error = torch.nn.CrossEntropyLoss(reduction='none')
 
         main_model.eval()
 
@@ -305,7 +305,9 @@ class Regression():
 
         sub_epoch = 3
         
+        # N, M = x_trn.shape
         N, M = x_trn.shape
+        # N, M1 = y_trn.shape
         bud = int(fraction * N)
         print("Budget, fraction and N:", bud, fraction, N)
         train_batch_size = min(bud,1000)
@@ -317,9 +319,9 @@ class Regression():
         rand_idxs = list(np.random.choice(N, size=bud, replace=False))
         sub_idxs = rand_idxs
 
-        criterion = nn.MSELoss()
+        criterion = nn.BCELoss()
 
-        main_model = RegressionNet(M)
+        main_model = LogisticRegression(M,1)
         main_model.apply(self.weight_reset)
 
         #for p in main_model.parameters():
@@ -645,7 +647,7 @@ class Regression():
         self.subset_idx = sub_idxs
         #print(constraint)
         #print(alphas)
-        no_red_error = torch.nn.MSELoss(reduction='none')
+        no_red_error = torch.nn.BCELoss(reduction='none')
 
         #loader_tst = DataLoader(CustomDataset(x_tst, y_tst,transform=None),shuffle=False,\
         #    batch_size=batch_size)
