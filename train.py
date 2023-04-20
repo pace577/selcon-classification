@@ -21,7 +21,7 @@ print(y_train)
 # reg = Regression()
 
 # Trains SELCON model for a subset fraction of 0.03 on the training subset (no fairness)
-reg.train_model_fair(x_train, y_train, x_val, y_val, fraction = 0.2)
+reg.train_model(x_train, y_train, x_val, y_val, fraction = 0.2, fair=True)
 
 # Return optimal subset indices
 subset_idxs = reg.return_subset()

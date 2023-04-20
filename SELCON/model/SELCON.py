@@ -589,6 +589,15 @@ class FindSubset_Vect_TrnLoss(object):
         torch.cuda.manual_seed(42)
         np.random.seed(42)
 
+    def grad_logistic(self,pred,actual,X):
+        X_t = torch.transpose(X, 0, 1)
+        print("X_t shape: ", X_t.shape)
+        print("pred ",pred.shape)
+        print("actual ",pred.shape)
+        return torch.matmul(X_t,pred-actual)
+    def logistic(self,y):
+        m=torch.nn.Sigmoid()
+        return m(y)
 
     def precompute(self,f_pi_epoch,p_epoch,alphas):
 
@@ -782,13 +791,15 @@ class FindSubset_Vect_TrnLoss(object):
 
                 # val_loss = torch.sum(weights*torch.mean(exten_val,dim=0),dim=1) - exten_val_y
 
-                val_loss = self.criterion(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y)
+                # val_loss = self.criterion(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y)
+                val_loss = self.criterion(self.logistic(torch.sum(exten_inp*weights,dim=1)),exten_val_y)
 
                 val_losses+= val_loss #torch.mean(val_loss*val_loss,dim=0)
             
             reg = torch.sum(weights[:,:-1]*weights[:,:-1],dim=1)
             # trn_loss = torch.sum(exten_inp*weights,dim=1) - targets
-            trn_loss = self.criterion(self.logistic(torch.matmul(exten_inp,torch.transpose(weights, 0, 1).to(device_new))),targets)
+            # trn_loss = self.criterion(self.logistic(torch.matmul(exten_inp,torch.transpose(weights, 0, 1).to(device_new))),targets)
+            trn_loss = self.criterion(self.logistic(torch.sum(exten_inp*weights,dim=1)),exten_val_y)
             #print(torch.sum(exten_inp*weights,dim=1)[0])
             #print((trn_loss*trn_loss)[0],self.lam*reg[0],\
             #    ((torch.mean(val_loss*val_loss,dim=0)-ele_delta)*ele_alphas)[0])
@@ -824,7 +835,8 @@ class FindSubset_Vect_TrnLoss(object):
         #loader_val = DataLoader(CustomDataset(self.x_val, self.y_val,transform=None),\
         #    shuffle=False,batch_size=batch)  
 
-        sum_error = torch.nn.CrossEntropyLoss(reduction='sum')       
+        # sum_error = torch.nn.CrossEntropyLoss(reduction='sum')
+        sum_error = torch.nn.BCELoss(reduction='sum')
 
         with torch.no_grad():
 
@@ -917,8 +929,10 @@ class FindSubset_Vect_TrnLoss(object):
 
                     #mod_trn = torch.unsqueeze(exten_trn, dim=1).repeat(1,targets.shape[0],1)
                     # sum_fin_trn_loss_g += torch.sum(sum_trn_loss_p[:,:,None]*exten_trn[:,None,:],dim=0)
-                    sum_fin_trn_loss_g += torch.sum(self.grad_logistic(torch.matmul(exten_trn,torch.transpose(weights, 0, 1)\
-                        .to(device_new)),exten_trn_y,exten_trn[:,None,:]),dim=0)
+                    # sum_fin_trn_loss_g += torch.sum(self.grad_logistic(torch.matmul(exten_trn,torch.transpose(weights, 0, 1)\
+                    #     .to(device_new)),exten_trn_y,exten_trn[:,None,:]),dim=0)
+                    sum_fin_trn_loss_g +=self.grad_logistic(self.logistic(torch.matmul(exten_trn,torch.transpose(weights, 0, 1)\
+                        .to(device_new))),exten_trn_y,exten_trn).T
 
                     #print(sum_fin_trn_loss_g.shape)
 
