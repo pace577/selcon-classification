@@ -315,7 +315,7 @@ class Regression():
 
         deltas = torch.tensor(delt).to(self.device) 
         
-      # initialise index
+        # initialise index
         rand_idxs = list(np.random.choice(N, size=bud, replace=False))
         sub_idxs = rand_idxs
 
