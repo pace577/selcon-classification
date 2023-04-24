@@ -47,7 +47,11 @@ class FindSubset_Vect(object):
 
     def precompute(self,f_pi_epoch,p_epoch,alphas):
         '''
-        
+        This function calculates the following:
+        1. f(∅), where ∅ is the empty set
+        2. f({i}), for all data points "i" in the training dataset
+        These quantities are later used to compute f(̂^S\{i}) and
+        f(i|∅), which are used to calculate the upper bound m[i].
         '''
 
         criterion = self.criterion()
@@ -68,7 +72,7 @@ class FindSubset_Vect(object):
         loader_val = DataLoader(CustomDataset(self.x_val, self.y_val, device = self.device, transform=None),\
             shuffle=False, batch_size=self.batch_size)
 
-        #Compute F_phi
+        ### Compute F_phi
         #for i in range(f_pi_epoch):
 
         prev_loss = 1000

@@ -106,15 +106,11 @@ class Classification():
 
             current_idxs = [s for s in range(len(sub_idxs))]
 
+        fsubset_d = FindSubset_Vect(x_trn[sub_rand_idxs], y_trn[sub_rand_idxs], x_val, y_val,main_model,\
+                                    self.criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size, fair=fair)
         if fair:
-            fsubset_d = FindSubset_Vect(x_trn[sub_rand_idxs], y_trn[sub_rand_idxs], x_val, y_val,main_model,\
-                self.criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size)
             fsubset_d.precompute(int(num_epochs/4),sub_epoch,alpha_orig)
         else:
-            # fsubset_d = FindSubset_Vect_TrnLoss(x_trn[sub_rand_idxs], y_trn[sub_rand_idxs], x_val, y_val,main_model,\
-            #     criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size)
-            fsubset_d = FindSubset_Vect(x_trn[sub_rand_idxs], y_trn[sub_rand_idxs], x_val, y_val,main_model,\
-                                        self.criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size, fair=False)
             fsubset_d.precompute(int(num_epochs/4),sub_epoch,torch.randn_like(deltas,device=self.device))
 
 
