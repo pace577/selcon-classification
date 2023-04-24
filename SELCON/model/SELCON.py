@@ -225,8 +225,8 @@ class FindSubset_Vect(object):
             exten_inp = torch.cat((inputs,torch.ones(inputs.shape[0],device=self.device).view(-1,1))\
                 ,dim=1)
 
-            bias_correction1 = 1.0 
-            bias_correction2 = 1.0 
+            self.bias_correction1 = 1.0
+            self.bias_correction2 = 1.0
 
             for i in range(p_epoch):
 
@@ -243,15 +243,8 @@ class FindSubset_Vect(object):
                     torch.cat((weights[:,:-1], torch.zeros((weights.shape[0],1),device=self.device)),dim=1)
                 #+fin_val_loss_g*ele_alphas[:,None]
 
-                exp_avg_w.mul_(beta1).add_(1.0 - beta1, weight_grad)
-                exp_avg_sq_w.mul_(beta2).addcmul_(1.0 - beta2, weight_grad, weight_grad)
-                denom = exp_avg_sq_w.sqrt().add_(main_optimizer.param_groups[0]['eps'])
+                self.manual_adam_update(weights, weight_grad, exp_avg_w, exp_avg_sq_w, main_optimizer, correct_bias=True)
 
-                bias_correction1 *= beta1
-                bias_correction2 *= beta2
-                step_size = (self.lr) * math.sqrt(1.0-bias_correction2) / (1.0-bias_correction1)
-                weights.addcdiv_(-step_size, exp_avg_w, denom)
-                
             val_losses = 0.
             for batch_idx_val in list(loader_val.batch_sampler):
                     
@@ -381,8 +374,8 @@ class FindSubset_Vect(object):
 
             exten_inp = torch.cat((inputs,torch.ones(inputs.shape[0],device=self.device).view(-1,1)),dim=1)
 
-            bias_correction1 = beta1**step#1.0 
-            bias_correction2 = beta2**step#1.0 
+            self.bias_correction1 = beta1**step#1.0
+            self.bias_correction2 = beta2**step#1.0
 
             for i in range(p_epoch):
                 sum_fin_trn_loss_g = self.eval_and_return_gradient(loader_tr, criterion, weights, train_set=True, clear_cache=True)
@@ -410,15 +403,8 @@ class FindSubset_Vect(object):
 
                 #print(weight_grad[0])
 
-                exp_avg_w.mul_(beta1).add_(1.0 - beta1, weight_grad)
-                exp_avg_sq_w.mul_(beta2).addcmul_(1.0 - beta2, weight_grad, weight_grad)
-                denom = exp_avg_sq_w.sqrt().add_(main_optimizer.param_groups[0]['eps'])
+                self.manual_adam_update(weights, weight_grad, exp_avg_w, exp_avg_sq_w, main_optimizer, correct_bias=True)
 
-                bias_correction1 *= beta1
-                bias_correction2 *= beta2
-                step_size = (self.lr)* math.sqrt(1.0-bias_correction2) / (1.0-bias_correction1)
-                weights.addcdiv_(-step_size, exp_avg_w, denom)
-                
                 #weights = weights - self.lr*(weight_grad)
 
                 '''print(self.lr)
@@ -427,18 +413,14 @@ class FindSubset_Vect(object):
                 #print(weights[0])
 
                 if self.fair:
-                    val_losses = torch.zeros_like(ele_delta).to(device_new)
+                    val_losses = torch.zeros_like(ele_delta).to(self.device)
                     val_loss = self.eval_and_return_loss(loader_val, criterion, weights,
                                                          train_set=False, clear_cache=True)
 
                     val_losses = (val_losses + val_loss).to(self.device)
 
                     alpha_grad = val_losses/len(loader_val.batch_sampler)-ele_delta
-
-                    exp_avg_a.mul_(beta1).add_(1.0 - beta1, alpha_grad)
-                    exp_avg_sq_a.mul_(beta2).addcmul_(1.0 - beta2, alpha_grad, alpha_grad)
-                    denom = exp_avg_sq_a.sqrt().add_(main_optimizer.param_groups[0]['eps'])
-                    ele_alphas.addcdiv_(step_size, exp_avg_a, denom)
+                    self.manual_adam_update(ele_alphas, alpha_grad, exp_avg_a, exp_avg_sq_a, main_optimizer, correct_bias=False)
                     ele_alphas[ele_alphas < 0] = 0
                     #print(ele_alphas[0])
 
@@ -477,6 +459,18 @@ class FindSubset_Vect(object):
         values,indices =m_values.topk(budget,largest=False)
 
         return list(indices.cpu().numpy())
+
+    def manual_adam_update(self, weights, weight_grad, exp_avg, exp_avg_sq, optimizer, correct_bias=False):
+        beta1,beta2 = optimizer.param_groups[0]['betas']
+        exp_avg.mul_(beta1).add_(1.0 - beta1, weight_grad)
+        exp_avg_sq.mul_(beta2).addcmul_(1.0 - beta2, weight_grad, weight_grad)
+        denom = exp_avg_sq.sqrt().add_(optimizer.param_groups[0]['eps'])
+
+        if correct_bias:
+            self.bias_correction1 *= beta1
+            self.bias_correction2 *= beta2
+        step_size = (self.lr)* math.sqrt(1.0-self.bias_correction2) / (1.0-self.bias_correction1)
+        weights.addcdiv_(-step_size, exp_avg, denom)
 
     def eval_and_return_loss(self, dataloader, criterion, weights,
                              train_set=True, clear_cache=False):
