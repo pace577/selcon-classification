@@ -91,7 +91,8 @@ class Classification():
             dual_optimizer = torch.optim.Adam([{'params': alphas}], lr=self.learning_rate) #{'params': alphas} #'''
             #delta_extend = torch.repeat_interleave(deltas,val_size, dim=0)
             #alphas.requires_grad = False
-            alpha_orig = copy.deepcopy(alphas)
+            alpha_orig = alphas.detach().clone()
+            alpha_orig.requires_grad = True
 
 
         if self.psuedo_length == 1.0:
@@ -106,7 +107,7 @@ class Classification():
 
             current_idxs = [s for s in range(len(sub_idxs))]
 
-        fsubset_d = FindSubset_Vect(x_trn[sub_rand_idxs], y_trn[sub_rand_idxs], x_val, y_val,main_model,\
+        fsubset_d = FindSubset_Vect(x_trn[sub_rand_idxs], y_trn[sub_rand_idxs], x_val, y_val, main_model, alphas,\
                                     self.criterion,self.device,deltas,self.learning_rate,self.reg_lambda,self.batch_size, fair=fair)
         if fair:
             fsubset_d.precompute(int(num_epochs/4),sub_epoch,alpha_orig)

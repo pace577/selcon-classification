@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 
 class FindSubset_Vect(object):
-    def __init__(self, x_trn, y_trn, x_val, y_val,model,loss,device,delta,lr,lam,batch,fair=True):
+    def __init__(self, x_trn, y_trn, x_val, y_val, model, alphas, loss,device,delta,lr,lam,batch,fair=True):
         
         self.x_trn = x_trn
         self.y_trn = y_trn
@@ -19,7 +19,8 @@ class FindSubset_Vect(object):
         self.x_val = x_val
         self.y_val = y_val
 
-        self.model = model
+        self.model = model #initial values
+        self.alphas = alphas #initial values
         self.criterion = loss 
         self.device = device
 
@@ -36,112 +37,88 @@ class FindSubset_Vect(object):
 
     def grad_logistic(self,pred,actual,X):
         X_t = torch.transpose(X, 0, 1)
-        print("X_t shape: ", X_t.shape)
-        print("pred ",pred.shape)
-        print("actual ",pred.shape)
+        # print("X_t shape: ", X_t.shape)
+        # print("pred ",pred.shape)
+        # print("actual ",pred.shape)
         return torch.matmul(X_t,pred-actual)
 
     def logistic(self,y):
         m=torch.nn.Sigmoid()
         return m(y)
 
-    def precompute(self,f_pi_epoch,p_epoch,alphas):
-        '''
-        This function calculates the following:
-        1. f(∅), where ∅ is the empty set
-        2. f({i}), for all data points "i" in the training dataset
-        These quantities are later used to compute f(̂^S\{i}) and
-        f(i|∅), which are used to calculate the upper bound m[i].
-        '''
-
-        criterion = self.criterion()
-        main_optimizer = torch.optim.Adam([
-                {'params': self.model.parameters()}], lr=self.lr)
-                
-        dual_optimizer = torch.optim.Adam([{'params': alphas}], lr=self.lr)
-
-        print("starting Pre compute")
-        #alphas = torch.rand_like(self.delta,requires_grad=True) 
-
-        #print(alphas)
-
-        #scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[10,20,40,100],\
-        #    gamma=0.5) #[e*2 for e in change]
-
-        #alphas.requires_grad = False
+    def compute_F(self, model, alphas, data, criterion):
         loader_val = DataLoader(CustomDataset(self.x_val, self.y_val, device = self.device, transform=None),\
             shuffle=False, batch_size=self.batch_size)
 
-        ### Compute F_phi
-        #for i in range(f_pi_epoch):
+        constraint = 0.
+        for batch_idx in list(loader_val.batch_sampler):
 
+            inputs, targets = loader_val.dataset[batch_idx]
+            inputs, targets = inputs.to(self.device), targets.to(self.device)
+
+            val_out = model(inputs)
+            print('val_out shape ',val_out.shape)
+            print('targets shape ',targets.shape)
+            constraint += criterion(val_out, targets)
+
+        constraint /= len(loader_val.batch_sampler)
+        constraint = constraint - self.delta
+        multiplier = alphas*constraint #torch.dot(alphas,constraint)
+
+        # Reg
+        reg = 0.
+        if data is not None:
+            for p in model.parameters():
+                reg += torch.linalg.norm(p)
+            reg = reg*data[0].shape[0] #multiply reg with num training points
+
+        # Training loss
+        train_loss = 0.
+        if data is not None:
+            train_inputs, train_targets = data
+            train_loss = criterion(model(train_inputs), train_targets)
+
+        loss = train_loss + self.lam*reg + multiplier
+        return loss
+
+    def compute_f(self, data=None):
+        """
+        Computes f(S) = F(w(μ(S),S), μ(S), S)
+        where S is the subset given to the function via "data" argument
+        """
+        model = copy.deepcopy(self.model)
+        alphas = self.alphas.detach().clone()
+        criterion = self.criterion()
+        main_optimizer = torch.optim.Adam([
+                {'params': model.parameters()}], lr=self.lr)
+        dual_optimizer = torch.optim.Adam([{'params': alphas}], lr=self.lr)
+
+
+        loss = None
         prev_loss = 1000
         stop_count = 0
         i=0
-        
+
+        model.train()
         while(True):
-            
             main_optimizer.zero_grad()
-            
-            '''l2_reg = 0
-            for param in self.model.parameters():
-                l2_reg += torch.norm(param)'''
-
-            #l = [torch.flatten(p) for p in main_model.parameters()]
-            #flat = torch.cat(l)
-            #l2_reg = torch.sum(flat*flat)
-            
-            constraint = 0. 
-            for batch_idx in list(loader_val.batch_sampler):
-                    
-                inputs, targets = loader_val.dataset[batch_idx]
-                inputs, targets = inputs.to(self.device), targets.to(self.device)
-                
-                val_out = self.model(inputs)
-                print('val_out shape ',val_out.shape)
-                print('targets shape ',targets.shape)
-                # print(val_out)
-                # print(targets)
-                constraint += criterion(val_out, targets)
-                
-            constraint /= len(loader_val.batch_sampler)
-            constraint = constraint - self.delta
-            multiplier = alphas*constraint #torch.dot(alphas,constraint)
-
-            loss = multiplier
-            self.F_phi = loss.item()
+            loss = self.compute_F(model, alphas, data, criterion)
+            # self.F_phi = loss.item()
             loss.backward()
-            
             main_optimizer.step()
-            #scheduler.step()
             
             '''for param in self.model.parameters():
                 param.requires_grad = False
             alphas.requires_grad = True'''
 
             dual_optimizer.zero_grad()
-
-            constraint = 0.
-            for batch_idx in list(loader_val.batch_sampler):
-                    
-                inputs, targets = loader_val.dataset[batch_idx]
-                inputs, targets = inputs.to(self.device), targets.to(self.device)
-            
-                val_out = self.model(inputs)
-                constraint += criterion(val_out, targets)
-            
-            constraint /= len(loader_val.batch_sampler)
-            constraint = constraint - self.delta
-            multiplier = -1.0*alphas*constraint #torch.dot(-1.0*alphas,constraint)
-            
-            multiplier.backward()
-            
+            dual_loss = self.compute_F(model, alphas, data, criterion)*(-1.0)
+            dual_loss.backward()
             dual_optimizer.step()
 
             alphas.requires_grad = False
             alphas.clamp_(min=0.0)
             alphas.requires_grad = True
-            #print(alphas)
 
             '''for param in self.model.parameters():
                 param.requires_grad = True'''
@@ -153,7 +130,7 @@ class FindSubset_Vect(object):
             #    break
 
             if abs(prev_loss - loss.item()) <= 1e-1 and stop_count >= 5:
-                break 
+                break
             elif abs(prev_loss - loss.item()) <= 1e-1:
                 stop_count += 1
             else:
@@ -165,114 +142,38 @@ class FindSubset_Vect(object):
             #if i % 50 == 0:
             #    print(loss.item(),alphas,constraint)
 
-        print("Finishing F phi")
+        print("Finished computing f of ", data)
+        return loss
 
-        if loss.item() <= 0.:
-            alphas = torch.zeros_like(alphas)
+    def precompute(self,f_pi_epoch,p_epoch,alphas):
+        '''
+        This function calculates the following:
+        1. f(∅), where ∅ is the empty set
+        2. f({i}), for all data points "i" in the training dataset
+        These quantities are later used to compute f(̂^S\{i}) and
+        f(i|∅), which are used to calculate the upper bound m[i].
+        '''
 
-        print(loss.item())
+        print("starting Pre compute")
 
-        l = [torch.flatten(p) for p in self.model.state_dict().values()]
-        flat = torch.cat(l).detach().clone()
-        
-        '''main_optimizer = torch.optim.Adam([{'params': self.model.parameters()}], lr=self.lr)
-        
-        alphas = torch.ones(alphas.shape) * 1e-4
-        x_val_ext = torch.cat((self.x_val,torch.ones(self.x_val.shape[0],device=self.device).view(-1,1))\
-                ,dim=1)
+        ###------- Compute f(∅) -------###
+        self.F_phi = self.compute_f(data=None)
 
-        yTy = torch.dot(self.y_val,self.y_val)
-        
-        #yTX = alphas*torch.matmul(self.y_val.view(1,-1),x_val_ext)
+        ###------- Compute f({i}) for all i -------###
 
-        XTX = torch.inverse(alphas*torch.matmul(x_val_ext.T,x_val_ext))
-
-        XTy = alphas*torch.matmul(x_val_ext.T,self.y_val.view(-1,1))
-
-        accum = torch.matmul(XTX, XTy) #torch.matmul(XTy,XTX)
-
-        flat = alphas*yTy - alphas*self.delta - accum'''
-        
         self.F_values = torch.zeros(len(self.x_trn),device=self.device)
 
-        device_new = self.device #"cuda:2"#self.device #
-        beta1,beta2 = main_optimizer.param_groups[0]['betas']
-        #main_optimizer.param_groups[0]['eps']
-
         loader_tr = DataLoader(CustomDataset_WithId(self.x_trn, self.y_trn,\
-            transform=None),shuffle=False,batch_size=self.batch_size*20)
+                                                    transform=None),shuffle=False,batch_size=1)
 
-        loader_val = DataLoader(CustomDataset(self.x_val, self.y_val,device = self.device,transform=None),\
-            shuffle=False,batch_size=self.batch_size*20)
-        
         for batch_idx in list(loader_tr.batch_sampler):
 
             inputs, targets, idxs = loader_tr.dataset[batch_idx]
             inputs, targets = inputs.to(self.device), targets.to(self.device)
 
-            ele_delta = self.delta.repeat(targets.shape[0]).to(self.device)
-        
-            weights = flat.view(1,-1).repeat(targets.shape[0], 1)
-            ele_alphas = alphas.detach().repeat(targets.shape[0]).to(self.device)
-            #print(weights.shape)
-
-            exp_avg_w = torch.zeros_like(weights)
-            exp_avg_sq_w = torch.zeros_like(weights)
-
-            #exp_avg_a = torch.zeros_like(ele_alphas)
-            #exp_avg_sq_a = torch.zeros_like(ele_alphas)
-
-            exten_inp = torch.cat((inputs,torch.ones(inputs.shape[0],device=self.device).view(-1,1))\
-                ,dim=1)
-
-            self.bias_correction1 = 1.0
-            self.bias_correction2 = 1.0
-
-            for i in range(p_epoch):
-
-                # trn_loss_g = torch.sum(exten_inp*weights,dim=1) - targets
-                # fin_trn_loss_g = exten_inp*2*trn_loss_g[:,None]
-                # print(torch.sum(exten_inp*weights,dim=1).shape)
-                trn_loss_g = criterion(self.logistic(torch.sum(exten_inp*weights,dim=1)),targets)
-                
-                fin_trn_loss_g =self.grad_logistic(self.logistic(torch.sum(exten_inp*weights,dim=1)),targets,exten_inp)
-                #no_bias = weights.clone()
-                #no_bias[-1,:] = torch.zeros(weights.shape[0])
-                
-                weight_grad = fin_trn_loss_g+ 2*self.lam*\
-                    torch.cat((weights[:,:-1], torch.zeros((weights.shape[0],1),device=self.device)),dim=1)
-                #+fin_val_loss_g*ele_alphas[:,None]
-
-                self.manual_adam_update(weights, weight_grad, exp_avg_w, exp_avg_sq_w, main_optimizer, correct_bias=True)
-
-            val_losses = 0.
-            for batch_idx_val in list(loader_val.batch_sampler):
-                    
-                inputs_val, targets_val = loader_val.dataset[batch_idx_val]
-                inputs_val, targets_val = inputs_val.to(self.device), targets_val.to(self.device)
-
-                exten_val = torch.cat((inputs_val,torch.ones(inputs_val.shape[0],device=self.device).view(-1,1)),dim=1)
-                
-                exten_val_y = torch.mean(targets_val).repeat(min(self.batch_size*20,targets.shape[0]))
-
-                # val_loss = torch.sum(weights*torch.mean(exten_val,dim=0),dim=1) - exten_val_y
-
-                # val_losses+= val_loss*val_loss #torch.mean(val_loss*val_loss,dim=0)
-                val_loss = criterion(self.logistic(torch.sum(exten_inp*weights,dim=1)),exten_val_y)
-                val_losses += val_loss
-                # fin_trn_loss_g =self.grad_logistic(self.logsitic(torch.sum(exten_inp*weights,dim=1)),exten_val_y,exten_inp)
-            
-            reg = torch.sum(weights[:,:-1]*weights[:,:-1],dim=1)
-            # trn_loss = torch.sum(exten_inp*weights,dim=1) - targets
-            trn_loss = criterion(self.logistic(torch.sum(exten_inp*weights,dim=1)),exten_val_y)
-            # fin_trn_loss_g =self.grad_logistic(self.logsitic(torch.sum(exten_inp*weights,dim=1)),exten_val_y,exten_inp)
-
-            self.F_values[idxs] = trn_loss+ self.lam*reg +torch.max(torch.zeros_like(ele_alphas),\
-                (val_losses/len(loader_val.batch_sampler)-ele_delta)*ele_alphas)
+            self.F_values[idxs] = self.compute_f(data=(inputs, targets))
 
         print(self.F_values[:10])
-
-        #self.F_values = self.F_values - max(loss.item(),0.) 
 
         print("Finishing Element wise F")
 
