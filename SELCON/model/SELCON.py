@@ -95,12 +95,15 @@ class FindSubset_Vect_No_ValLoss(object):
                 print('targets shape ',targets.shape)
                 # print(val_out)
                 # print(targets)
+                # print(val_out)
+                # print(targets)
                 constraint += self.criterion(val_out, targets)
                 
             constraint /= len(loader_val.batch_sampler)
             constraint = constraint - self.delta
             multiplier = alphas*constraint #torch.dot(alphas,constraint)
-
+            print(val_out)
+            print(targets)
             loss = multiplier
             self.F_phi = loss.item()
             loss.backward()
