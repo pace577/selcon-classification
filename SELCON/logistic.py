@@ -54,7 +54,7 @@ class Regression():
         bud = int(fraction * N)
         print("Budget, fraction and N:", bud, fraction, N)
         train_batch_size = min(bud,1000)
-        print_every = 50
+        print_every = 200
 
         deltas = torch.tensor(delt).to(self.device) 
         
@@ -154,11 +154,11 @@ class Regression():
                 main_optimizer.step()
                 #scheduler.step()
 
-            if i % print_every == 0:  # Print Training and Validation Loss
-                print('Epoch:', i + 1, 'SubsetTrn', temp_loss)
-                print("Previous loss: ", prev_loss, "\n"\
-                    ,"Temporary loss: ", temp_loss, "\n"\
-                    , "Mul: ", mul)
+            # if i % print_every == 0:  # Print Training and Validation Loss
+            #     print('Epoch:', i + 1, 'SubsetTrn', temp_loss)
+            #     print("Previous loss: ", prev_loss, "\n"\
+            #         ,"Temporary loss: ", temp_loss, "\n"\
+            #         , "Mul: ", mul)
                 # print(main_optimizer.param_groups[0]['lr'])
                 
             if ((i + 1) % self.select_every == 0):
@@ -520,12 +520,12 @@ class Regression():
 
             #print(alphas,constraint)
 
-            if i % print_every == 0:  # Print Training and Validation Loss
-                print('Epoch:', i + 1, 'SubsetTrn', loss.item())
-                print("Previous loss: ", prev_loss, "\n"\
-                    ,"Temporary loss: ", temp_loss, "\n"\
-                    ,"Constraint: ", constraint, "\n"\
-                    , "Alphas: ", alphas)
+            # if i % print_every == 0:  # Print Training and Validation Loss
+            #     print('Epoch:', i + 1, 'SubsetTrn', loss.item())
+            #     print("Previous loss: ", prev_loss, "\n"\
+            #         ,"Temporary loss: ", temp_loss, "\n"\
+            #         ,"Constraint: ", constraint, "\n"\
+            #         , "Alphas: ", alphas)
                 #print(main_optimizer.state)#.keys())
                 #print(alphas,constraint)
                 #print(criterion(scores, targets) , reg_lambda*l2_reg*len(idxs) ,multiplier)
@@ -595,7 +595,7 @@ class Regression():
 
                 sub_idxs.sort()
 
-                print("First 10 subset indices: ", sub_idxs[:10])
+                # print("First 10 subset indices: ", sub_idxs[:10])
                 np.random.seed(42)
                 np_sub_idxs = np.array(sub_idxs)
                 np.random.shuffle(np_sub_idxs)

@@ -3,6 +3,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import time
 sys.path.append(os.path.join(".","SELCON"))
 sys.path.append(os.path.join(".","SELCON\\utils"))
 sys.path.append(os.path.join(".","SELCON\\utils\\custom_dataset"))
@@ -15,7 +16,7 @@ from SELCON.utils import cross_entropy_loss
 reg = Regression()
 # Load data and prepare linear regression model
 # (x_train, y_train), (x_val, y_val), (x_test, y_test) = load_def_data("cadata")
-(x_train,y_train),(x_val,y_val),(x_test,y_test)=load_def_data('Custom_Data',class_sep=1)
+(x_train,y_train),(x_val,y_val),(x_test,y_test)=load_def_data('Custom_Data',class_sep=3)
 # print(y_train)
 # import numpy as np
 # X=np.load('./Dataset/features.npy')
@@ -24,10 +25,16 @@ reg = Regression()
 val_train_loss=[]
 val_train_sub_loss=[]
 val_train_rand_loss=[]
+time_train_loss=[]
+time_train_sub_loss=[]
+time_train_rand_loss=[]
 # Trains SELCON model for a subset fraction of 0.03 on the training subset (no fairness)
 for i in [0.01,0.03,0.05,0.07,0.1]:
     reg = Regression()
+    start =time.time()
     reg.train_model_fair(x_train, y_train, x_val, y_val, fraction = i)
+    end = time.time()
+    additional = (end-start)
     # if i==0.03:
     #     break
     # Return optimal subset indices
@@ -43,7 +50,7 @@ for i in [0.01,0.03,0.05,0.07,0.1]:
     Y_rand=[]
     for k in range(20):
         l = np.random.choice(idx, size=len(X_sub ), replace=False)
-        print(x_train[l].size())
+        # print(x_train[l].size())
         X_rand.append(x_train[l])
         Y_rand.append(y_train[l])
 
@@ -56,10 +63,13 @@ for i in [0.01,0.03,0.05,0.07,0.1]:
     yy_v = y_sub.cpu().numpy()
 
 
-    trnset_loss, subset_loss, rand_loss = cross_entropy_loss.cross_entropy_loss(x_train, y_train, X_sub, y_sub,X_rand,Y_rand,x_val, y_val,x_test,y_test, lr=0.01, epochs= 1000)
+    trnset_loss, subset_loss, rand_loss,trn_time,sub_time,rand_time = cross_entropy_loss.cross_entropy_loss(x_train, y_train, X_sub, y_sub,X_rand,Y_rand,x_val, y_val,x_test,y_test,additional, lr=0.01, epochs= 1000)
     val_train_loss.append(trnset_loss)
     val_train_sub_loss.append(subset_loss)
     val_train_rand_loss.append(rand_loss)
+    time_train_loss.append(trn_time)
+    time_train_sub_loss.append(sub_time)
+    time_train_rand_loss.append(rand_time)
 
     # trnset_loss, subset_loss = cross_entropy_loss.cross_entropy_loss(x_train, y_train, X_rand, y_, x_val, y_val, lr=0.01, epochs= 1000)
     # print(f"Validation loss on model trained on training set: {trnset_loss.item():.4f}")
@@ -75,10 +85,23 @@ for i in [0.01,0.03,0.05,0.07,0.1]:
 val_train_loss = torch.stack(val_train_loss).cpu().detach().numpy()
 val_train_sub_loss = torch.stack(val_train_sub_loss).cpu().detach().numpy()
 val_train_rand_loss = torch.stack(val_train_rand_loss).cpu().detach().numpy()
-
-plt.plot(np.array([1,3,5,7,10]),val_train_loss,c='g',label='training set')
-plt.plot(np.array([1,3,5,7,10]),val_train_sub_loss,c='r',label='subset')
-plt.plot(np.array([1,3,5,7,10]),val_train_rand_loss,c='b',label='random subset')
+# time_train_rand_loss = torch.stack(time_train_rand_loss).cpu().detach().numpy()
+# time_train_rand_loss = torch.stack(time_train_rand_loss).cpu().detach().numpy()
+# time_train_rand_loss = torch.stack(time_train_rand_loss).cpu().detach().numpy()
+plt.plot(np.array([1,3,5,7,10]),val_train_loss,c='g',label='Full-Selection')
+plt.plot(np.array([1,3,5,7,10]),val_train_sub_loss,c='r',label='SELCON')
+plt.plot(np.array([1,3,5,7,10]),val_train_rand_loss,c='b',label='Random Selection')
+plt.xlabel("|S|/|D| %")
+plt.ylabel("BCE loss")
+plt.title("Performance in terms of BCELoss")
+plt.legend()
+plt.show()
+plt.plot(np.array([1,3,5,7,10]),np.array(time_train_loss),c='g',label='Full-Selection')
+plt.plot(np.array([1,3,5,7,10]),np.array(time_train_sub_loss),c='r',label='SELCON')
+plt.plot(np.array([1,3,5,7,10]),np.array(time_train_rand_loss),c='b',label='Random Selection')
+plt.xlabel("|S|/|D| %")
+plt.ylabel("Speedup")
+plt.title("Performance in terms of Speedup")
 plt.legend()
 plt.show()
 

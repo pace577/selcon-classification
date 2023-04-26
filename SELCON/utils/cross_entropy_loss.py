@@ -14,6 +14,8 @@ import sys
 import os
 import matplotlib.pyplot as plt
 import pdb
+import time
+import numpy as np
 
 sys.path.append(os.path.join(".","SELCON"))
 sys.path.append(os.path.join(".","SELCON\\utils"))
@@ -63,7 +65,7 @@ def train_logistic_regression(X, y, input_dim, lr=0.01, epochs=1, verbose = Fals
     return model
 
 
-def cross_entropy_loss(x_trn, y_trn, x_sub, y_sub,x_rand,y_rand,x_val, y_val,x_test,y_test, epochs=100, lr = 0.1):
+def cross_entropy_loss(x_trn, y_trn, x_sub, y_sub,x_rand,y_rand,x_val, y_val,x_test,y_test,additonal,epochs=100, lr = 0.1):
     # train a model on x_trn, y_trn and evaluate the cross entropy loss on x_val, y_val
     criterion = nn.BCELoss()
 
@@ -90,27 +92,45 @@ def cross_entropy_loss(x_trn, y_trn, x_sub, y_sub,x_rand,y_rand,x_val, y_val,x_t
     
     N, M = x_trn.shape
     # Train a LR model on x_trn, y_trn and evaluate its loss on the validation set
+    start = time.time()
     trnmodel = train_logistic_regression(x_trn, y_trn, input_dim=M, lr=lr, epochs=epochs)
     y_test_trnmodel = trnmodel(x_test)
     loss_test_trnmodel = criterion(y_test_trnmodel, y_test)
-
+    end = time.time()
+    time_test_trnmodel = end-start
     N, M = x_sub.shape
     # Train a LR model on x_sub, y_sub and evaluate its loss on the validation set
+    start = time.time()
     submodel = train_logistic_regression(x_sub, y_sub, input_dim=M, lr=lr, epochs=epochs)
     y_test_submodel = submodel(x_test)
     loss_test_submodel = criterion(y_test_submodel, y_test)
+    end = time.time()
     # loss_val_submodel = criterion(y_val_submodel, y_val)
+    time_test_submodel = end-start + additonal
     averages=0
-    for i in range(20):
-        randmodel = train_logistic_regression(x_rand[i], y_rand[i], input_dim=M, lr=lr, epochs=epochs)
+    averages_times=0
+    idx = np.arange(x_trn.size()[0])
+    print("-------------------------",x_trn.size()[0],"-----------------------------------")
+    for i in range(100):
+        start = time.time()
+        l = np.random.choice(idx, size=x_sub.size()[0], replace=False)
+        # print(l)
+        randmodel = train_logistic_regression(x_trn[l], y_trn[l], input_dim=M, lr=lr, epochs=epochs)
         y_test_randmodel = randmodel(x_test)
         loss_test_randmodel = criterion(y_test_randmodel, y_test)
+        end = time.time()
         averages+=loss_test_randmodel
-    averages = averages/5.0
+        averages_times+=(end-start)
+    averages = averages/100.0
+    averages_times = averages_times/100.0
+    time_test_randmodel = averages_times
     # print(f"loss_val_trnmodel: {loss_val_trnmodel.item():.4f}")
     # print(f"loss_val_submodel: {loss_val_submodel.item():.4f}")
-    
-    return loss_test_trnmodel, loss_test_submodel,loss_test_randmodel
+    print("Submodel time: ",time_test_submodel)
+    print("Randmodel time: ",time_test_randmodel)
+    time_test_submodel =time_test_trnmodel /time_test_submodel
+    time_test_randmodel = time_test_trnmodel/time_test_randmodel
+    return loss_test_trnmodel, loss_test_submodel,loss_test_randmodel,time_test_trnmodel,time_test_submodel,time_test_randmodel
 
 if __name__ == '__main__':
     # Define the dataset and labels
