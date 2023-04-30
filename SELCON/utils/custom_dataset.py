@@ -22,8 +22,10 @@ class CustomDataset(Dataset):
         self.transform = transform
         if device is not None:
             # Push the entire data to given device, eg: cuda:0
-            self.data = torch.from_numpy(data.astype('float32')).to(device)
-            self.targets = torch.from_numpy(target).to(device)
+            # self.data = torch.from_numpy(data.astype('float32')).to(device)
+            # self.targets = torch.from_numpy(target).to(device)
+            self.data = data.to(device)
+            self.targets = target.to(device)
         else:
             self.data = data#.astype('float32')
             self.targets = target

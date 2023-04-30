@@ -236,7 +236,7 @@ class Regression():
             prev_loss2 = prev_loss
             prev_loss = temp_loss
         
-        no_red_error = torch.nn.MSELoss(reduction='none')
+        no_red_error = torch.nn.CrossEntropyLoss(reduction='none')
 
         main_model.eval()
 
@@ -316,7 +316,7 @@ class Regression():
         rand_idxs = list(np.random.choice(N, size=bud, replace=False))
         sub_idxs = rand_idxs
 
-        criterion = nn.MSELoss()
+        criterion = nn.CrossEntropyLoss()
 
         main_model = RegressionNet(M)
         main_model.apply(self.weight_reset)
@@ -644,7 +644,7 @@ class Regression():
         self.subset_idx = sub_idxs
         #print(constraint)
         #print(alphas)
-        no_red_error = torch.nn.MSELoss(reduction='none')
+        no_red_error = torch.nn.CrossEntropyLoss(reduction='none')
 
         #loader_tst = DataLoader(CustomDataset(x_tst, y_tst,transform=None),shuffle=False,\
         #    batch_size=batch_size)

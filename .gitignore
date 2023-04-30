@@ -2,6 +2,7 @@ build
 results
 test
 .vscode
+.ipynb_checkpoints/
 __pycache__
 utils/__pycache__
 model/__pycache__

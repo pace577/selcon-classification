@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import copy
 
-from utils.custom_dataset import CustomDataset_WithId, CustomDataset
+from SELCON.utils.custom_dataset import CustomDataset_WithId, CustomDataset
 from torch.utils.data import DataLoader
 
 
@@ -33,7 +33,15 @@ class FindSubset_Vect_No_ValLoss(object):
         torch.cuda.manual_seed(42)
         np.random.seed(42)
 
-
+    def grad_logistic(self,pred,actual,X):
+        X_t = torch.transpose(X, 0, 1)
+        # print("X_t shape: ", X_t.shape)
+        # print("pred ",pred.shape)
+        # print("actual ",pred.shape)
+        return torch.matmul(X_t,pred-actual)
+    def logistic(self,y):
+        m=torch.nn.Sigmoid()
+        return m(y)
     def precompute(self,f_pi_epoch,p_epoch,alphas):
         '''
         
@@ -81,14 +89,21 @@ class FindSubset_Vect_No_ValLoss(object):
                     
                 inputs, targets = loader_val.dataset[batch_idx]
                 inputs, targets = inputs.to(self.device), targets.to(self.device)
-            
+                
                 val_out = self.model(inputs)
+                # print('val_out shape ',val_out.shape)
+                # print('targets shape ',targets.shape)
+                # print(val_out)
+                # print(targets)
+                # print(val_out)
+                # print(targets)
                 constraint += self.criterion(val_out, targets)
                 
             constraint /= len(loader_val.batch_sampler)
             constraint = constraint - self.delta
             multiplier = alphas*constraint #torch.dot(alphas,constraint)
-
+            # print(val_out)
+            # print(targets)
             loss = multiplier
             self.F_phi = loss.item()
             loss.backward()
@@ -211,9 +226,12 @@ class FindSubset_Vect_No_ValLoss(object):
 
             for i in range(p_epoch):
 
-                trn_loss_g = torch.sum(exten_inp*weights,dim=1) - targets
-                fin_trn_loss_g = exten_inp*2*trn_loss_g[:,None]
-
+                # trn_loss_g = torch.sum(exten_inp*weights,dim=1) - targets
+                # fin_trn_loss_g = exten_inp*2*trn_loss_g[:,None]
+                # print(torch.sum(exten_inp*weights,dim=1).shape)
+                trn_loss_g = self.criterion(self.logistic(torch.sum(exten_inp*weights,dim=1)),targets)
+                
+                fin_trn_loss_g =self.grad_logistic(self.logistic(torch.sum(exten_inp*weights,dim=1)),targets,exten_inp)
                 #no_bias = weights.clone()
                 #no_bias[-1,:] = torch.zeros(weights.shape[0])
                 
@@ -240,17 +258,22 @@ class FindSubset_Vect_No_ValLoss(object):
                 
                 exten_val_y = torch.mean(targets_val).repeat(min(self.batch_size*20,targets.shape[0]))
 
-                val_loss = torch.sum(weights*torch.mean(exten_val,dim=0),dim=1) - exten_val_y
+                # val_loss = torch.sum(weights*torch.mean(exten_val,dim=0),dim=1) - exten_val_y
 
-                val_losses+= val_loss*val_loss #torch.mean(val_loss*val_loss,dim=0)
+                # val_losses+= val_loss*val_loss #torch.mean(val_loss*val_loss,dim=0)
+                val_loss = self.criterion(self.logistic(torch.sum(exten_inp*weights,dim=1)),exten_val_y)
+                val_losses += val_loss
+                # fin_trn_loss_g =self.grad_logistic(self.logsitic(torch.sum(exten_inp*weights,dim=1)),exten_val_y,exten_inp)
             
             reg = torch.sum(weights[:,:-1]*weights[:,:-1],dim=1)
-            trn_loss = torch.sum(exten_inp*weights,dim=1) - targets
+            # trn_loss = torch.sum(exten_inp*weights,dim=1) - targets
+            trn_loss = self.criterion(self.logistic(torch.sum(exten_inp*weights,dim=1)),exten_val_y)
+            # fin_trn_loss_g =self.grad_logistic(self.logsitic(torch.sum(exten_inp*weights,dim=1)),exten_val_y,exten_inp)
 
-            self.F_values[idxs] = trn_loss*trn_loss+ self.lam*reg +torch.max(torch.zeros_like(ele_alphas),\
+            self.F_values[idxs] = trn_loss+ self.lam*reg +torch.max(torch.zeros_like(ele_alphas),\
                 (val_losses/len(loader_val.batch_sampler)-ele_delta)*ele_alphas)
 
-        print(self.F_values[:10])
+        # print(self.F_values[:10])
 
         #self.F_values = self.F_values - max(loss.item(),0.) 
 
@@ -270,7 +293,7 @@ class FindSubset_Vect_No_ValLoss(object):
         loader_val = DataLoader(CustomDataset(self.x_val, self.y_val,device = self.device,transform=None),\
             shuffle=False,batch_size=batch)  
 
-        sum_error = torch.nn.MSELoss(reduction='sum')       
+        sum_error = torch.nn.BCELoss(reduction='sum')       
 
         with torch.no_grad():
 
@@ -370,15 +393,19 @@ class FindSubset_Vect_No_ValLoss(object):
                         targets.shape[0])).to(device_new)
                     #print(exten_val_y[0])
                 
-                    val_loss_p = 2*(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))\
-                         - exten_val_y) 
+                    # val_loss_p = 2*(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))\
+                    #      - exten_val_y) 
                     #val_losses += torch.mean(val_loss_p*val_loss_p,dim=0)
                     #val_loss_g = torch.unsqueeze(val_loss_p, dim=2).repeat(1,1,flat.shape[0])
                     #print(val_loss_g[0][0])
 
                     #mod_val = torch.unsqueeze(exten_val, dim=1).repeat(1,targets.shape[0],1)
                     #print(mod_val[0])
-                    fin_val_loss_g += torch.mean(val_loss_p[:,:,None]*exten_val[:,None,:],dim=0)
+                    # fin_val_loss_g += torch.mean(val_loss_p[:,:,None]*exten_val[:,None,:],dim=0)
+                    # print("")
+                    val_loss_p = self.criterion(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y)
+                    # print(fin_val_loss_g.shape)
+                    fin_val_loss_g +=self.grad_logistic(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y,exten_val).T #changed
 
                     del exten_val,exten_val_y,val_loss_p,inputs_val, targets_val #mod_val,val_loss_g,
                     torch.cuda.empty_cache()
@@ -398,23 +425,32 @@ class FindSubset_Vect_No_ValLoss(object):
                         targets.shape[0])).to(device_new)
                     #print(exten_val_y[0])
                 
-                    sum_trn_loss_p = 2*(torch.matmul(exten_trn,torch.transpose(weights, 0, 1)\
-                        .to(device_new)) - exten_trn_y)
+                    # sum_trn_loss_p = 2*(torch.matmul(exten_trn,torch.transpose(weights, 0, 1)\
+                    #     .to(device_new)) - exten_trn_y)
                     #sum_trn_loss_g = torch.unsqueeze(trn_loss_p, dim=2).repeat(1,1,flat.shape[0])
 
                     #mod_trn = torch.unsqueeze(exten_trn, dim=1).repeat(1,targets.shape[0],1)
-                    sum_fin_trn_loss_g += torch.sum(sum_trn_loss_p[:,:,None]*exten_trn[:,None,:],dim=0)
+                    # sum_fin_trn_loss_g += torch.sum(sum_trn_loss_p[:,:,None]*exten_trn[:,None,:],dim=0)
+                    # print("extern_shape: ",exten_trn.shape)
+                    # print("weights shape: ",torch.transpose(weights, 0, 1).shape)
+                    # print(self.grad_logistic(self.logistic(torch.matmul(exten_trn,torch.transpose(weights, 0, 1)\
+                    #     .to(device_new))),exten_trn_y,exten_trn))
+                    # print()
 
+                    sum_fin_trn_loss_g +=self.grad_logistic(self.logistic(torch.matmul(exten_trn,torch.transpose(weights, 0, 1)\
+                        .to(device_new))),exten_trn_y,exten_trn).T
                     #print(sum_fin_trn_loss_g.shape)
 
-                    del exten_trn,exten_trn_y,sum_trn_loss_p,inputs_trn, targets_trn #mod_trn,sum_trn_loss_g,
+                    del exten_trn,exten_trn_y,inputs_trn, targets_trn #mod_trn,sum_trn_loss_g,
                     torch.cuda.empty_cache()
 
                 #fin_trn_loss_g /= len(loader_tr.batch_sampler)
                 sum_fin_trn_loss_g = sum_fin_trn_loss_g.to(self.device)
 
-                trn_loss_g = torch.sum(exten_inp*weights,dim=1) - targets
-                fin_trn_loss_g = exten_inp*2*trn_loss_g[:,None]
+                # trn_loss_g = torch.sum(exten_inp*weights,dim=1) - targets
+                # fin_trn_loss_g = exten_inp*2*trn_loss_g[:,None]
+
+                fin_trn_loss_g = self.grad_logistic(torch.sum(exten_inp*weights,dim=1),targets,exten_inp)
 
                 fin_trn_loss_g = (sum_fin_trn_loss_g - fin_trn_loss_g)/rem_len
 
@@ -454,9 +490,11 @@ class FindSubset_Vect_No_ValLoss(object):
                         targets.shape[0])).to(device_new)
                     #print(exten_val_y[0])
                 
-                    val_loss_p = torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))\
-                         - exten_val_y #
-                    val_losses += torch.mean(val_loss_p*val_loss_p,dim=0)
+                    # val_loss_p = torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))\
+                    #      - exten_val_y #
+                    # val_losses += torch.mean(val_loss_p*val_loss_p,dim=0)
+                    val_loss_p = self.criterion(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y)
+                    val_losses += torch.mean(val_loss_p,dim=0)
 
                     del exten_val,exten_val_y,val_loss_p,inputs_val, targets_val
                     torch.cuda.empty_cache()
@@ -483,9 +521,9 @@ class FindSubset_Vect_No_ValLoss(object):
                 exten_val = torch.cat((inputs_val,torch.ones(inputs_val.shape[0],device=self.device).view(-1,1)),dim=1)
                 exten_val_y = targets_val.view(-1,1).repeat(1,targets.shape[0])
                 
-                val_loss = torch.matmul(exten_val,torch.transpose(weights, 0, 1)) - exten_val_y
-
-                val_losses+= torch.mean(val_loss*val_loss,dim=0)
+                # val_loss = torch.matmul(exten_val,torch.transpose(weights, 0, 1)) - exten_val_y
+                val_loss = self.criterion(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y)
+                val_losses+= torch.mean(val_loss,dim=0)
             
             reg = torch.sum(weights[:,:-1]*weights[:,:-1],dim=1)
 
@@ -499,13 +537,20 @@ class FindSubset_Vect_No_ValLoss(object):
                 exten_trn_y = targets_trn.view(-1,1).repeat(1,min(self.batch_size,targets.shape[0]))
                 #print(exten_val_y[0])
             
-                trn_loss = torch.matmul(exten_trn,torch.transpose(weights, 0, 1)) - exten_trn_y
+                # trn_loss = torch.matmul(exten_trn,torch.transpose(weights, 0, 1)) - exten_trn_y
+                trn_loss = self.criterion(self.logistic(torch.matmul(exten_trn,weights.T)),exten_trn_y)
                 
-                trn_losses+= torch.sum(trn_loss*trn_loss,dim=0)
+                trn_losses+= torch.sum(trn_loss,dim=0)
 
-            trn_loss_ind = torch.sum(exten_inp*weights,dim=1) - targets
+            # trn_loss_ind = torch.sum(exten_inp*weights,dim=1) - targets
+            # print("logistic shape ",self.logistic(exten_inp*weights).shape)
+            # print("external val y ",exten_val_y.shape)
+            # print("weights ",weights.shape)
+            # print("external inpu ",exten_inp.shape)
+            # print("shape",targets.shape)
+            trn_loss_ind = self.criterion(self.logistic(torch.sum(torch.matmul(exten_inp,weights.T),dim=1)),targets)
 
-            trn_losses -= trn_loss_ind*trn_loss_ind
+            trn_losses -= trn_loss_ind
 
             abs_value = F_curr - (trn_losses + self.lam*reg*rem_len \
                 + (val_losses/len(loader_val.batch_sampler)-ele_delta)*ele_alphas) 
@@ -674,7 +719,7 @@ class FindSubset_Vect_TrnLoss(object):
         #main_optimizer.param_groups[0]['eps']
 
         loader_tr = DataLoader(CustomDataset_WithId(self.x_trn, self.y_trn,\
-            transform=None), device = self.device, shuffle=False,batch_size=self.batch_size*20)
+            transform=None), shuffle=False,batch_size=self.batch_size*20) # why device = self.device here?
 
         loader_val = DataLoader(CustomDataset(self.x_val, self.y_val,device = self.device,transform=None),\
             shuffle=False,batch_size=self.batch_size*20)
@@ -704,8 +749,9 @@ class FindSubset_Vect_TrnLoss(object):
 
             for i in range(p_epoch):
 
-                trn_loss_g = torch.sum(exten_inp*weights,dim=1) - targets
-                fin_trn_loss_g = exten_inp*2*trn_loss_g[:,None]
+                # trn_loss_g = torch.sum(exten_inp*weights,dim=1) - targets
+                # fin_trn_loss_g = exten_inp*2*trn_loss_g[:,None]
+                fin_trn_loss_g = self.grad_logistic(torch.sum(exten_inp*weights,dim=1),targets,exten_inp)
 
                 #no_bias = weights.clone()
                 #no_bias[-1,:] = torch.zeros(weights.shape[0])
@@ -737,18 +783,20 @@ class FindSubset_Vect_TrnLoss(object):
                 #val_loss = torch.matmul(torch.mean(exten_val,dim=0),weights.T).view(-1) - exten_val_y 
                 #torch.transpose(weights, 0, 1)
 
-                val_loss = torch.sum(weights*torch.mean(exten_val,dim=0),dim=1) - exten_val_y
+                # val_loss = torch.sum(weights*torch.mean(exten_val,dim=0),dim=1) - exten_val_y
 
-                val_losses+= val_loss*val_loss #torch.mean(val_loss*val_loss,dim=0)
+                val_loss = self.criterion(self.logistic(torch.matmul(exten_val,torch.transpose(weights, 0, 1).to(device_new))),exten_val_y)
+
+                val_losses+= val_loss #torch.mean(val_loss*val_loss,dim=0)
             
             reg = torch.sum(weights[:,:-1]*weights[:,:-1],dim=1)
-            trn_loss = torch.sum(exten_inp*weights,dim=1) - targets
-
+            # trn_loss = torch.sum(exten_inp*weights,dim=1) - targets
+            trn_loss = self.criterion(self.logistic(torch.matmul(exten_inp,torch.transpose(weights, 0, 1).to(device_new))),targets)
             #print(torch.sum(exten_inp*weights,dim=1)[0])
             #print((trn_loss*trn_loss)[0],self.lam*reg[0],\
             #    ((torch.mean(val_loss*val_loss,dim=0)-ele_delta)*ele_alphas)[0])
 
-            self.F_values[idxs] = trn_loss*trn_loss+ self.lam*reg +torch.max(torch.zeros_like(ele_alphas),\
+            self.F_values[idxs] = trn_loss+ self.lam*reg +torch.max(torch.zeros_like(ele_alphas),\
                 (val_losses/len(loader_val.batch_sampler)-ele_delta)*ele_alphas)
 
         #print(self.F_values[:10])
@@ -779,7 +827,7 @@ class FindSubset_Vect_TrnLoss(object):
         #loader_val = DataLoader(CustomDataset(self.x_val, self.y_val,transform=None),\
         #    shuffle=False,batch_size=batch)  
 
-        sum_error = torch.nn.MSELoss(reduction='sum')       
+        sum_error = torch.nn.CrossEntropyLoss(reduction='sum')       
 
         with torch.no_grad():
 
@@ -864,12 +912,16 @@ class FindSubset_Vect_TrnLoss(object):
                         targets.shape[0])).to(device_new)
                     #print(exten_val_y[0])
                 
-                    sum_trn_loss_p = 2*(torch.matmul(exten_trn,torch.transpose(weights, 0, 1)\
-                        .to(device_new)) - exten_trn_y)
+                    # sum_trn_loss_p = 2*(torch.matmul(exten_trn,torch.transpose(weights, 0, 1)\
+                    #     .to(device_new)) - exten_trn_y)
+                    sum_trn_loss_p = self.criterion(self.logistic(torch.matmul(exten_trn,torch.transpose(weights, 0, 1)\
+                        .to(device_new))),exten_trn_y)
                     #sum_trn_loss_g = torch.unsqueeze(trn_loss_p, dim=2).repeat(1,1,flat.shape[0])
 
                     #mod_trn = torch.unsqueeze(exten_trn, dim=1).repeat(1,targets.shape[0],1)
-                    sum_fin_trn_loss_g += torch.sum(sum_trn_loss_p[:,:,None]*exten_trn[:,None,:],dim=0)
+                    # sum_fin_trn_loss_g += torch.sum(sum_trn_loss_p[:,:,None]*exten_trn[:,None,:],dim=0)
+                    sum_fin_trn_loss_g += torch.sum(self.grad_logistic(torch.matmul(exten_trn,torch.transpose(weights, 0, 1)\
+                        .to(device_new)),exten_trn_y,exten_trn[:,None,:]),dim=0)
 
                     #print(sum_fin_trn_loss_g.shape)
 
@@ -879,8 +931,9 @@ class FindSubset_Vect_TrnLoss(object):
                 #fin_trn_loss_g /= len(loader_tr.batch_sampler)
                 sum_fin_trn_loss_g = sum_fin_trn_loss_g.to(self.device)
 
-                trn_loss_g = torch.sum(exten_inp*weights,dim=1) - targets
-                fin_trn_loss_g = exten_inp*2*trn_loss_g[:,None]
+                # trn_loss_g = torch.sum(exten_inp*weights,dim=1) - targets
+                # fin_trn_loss_g = exten_inp*2*trn_loss_g[:,None]
+                fin_trn_loss_g = self.grad_logistic(torch.sum(exten_inp*weights,dim=1),targets,exten_inp)
 
                 fin_trn_loss_g = (sum_fin_trn_loss_g - fin_trn_loss_g)/rem_len
 
@@ -911,13 +964,17 @@ class FindSubset_Vect_TrnLoss(object):
                 exten_trn_y = targets_trn.view(-1,1).repeat(1,min(self.batch_size,targets.shape[0]))
                 #print(exten_val_y[0])
             
-                trn_loss = torch.matmul(exten_trn,torch.transpose(weights, 0, 1)) - exten_trn_y
+                # trn_loss = torch.matmul(exten_trn,torch.transpose(weights, 0, 1)) - exten_trn_y
                 
-                trn_losses+= torch.sum(trn_loss*trn_loss,dim=0)
+                trn_loss = self.criterion(self.logistic(torch.matmul(exten_trn,torch.transpose(weights, 0, 1)\
+                        .to(device_new))),exten_trn_y)
+                
+                trn_losses+= torch.sum(trn_loss,dim=0)
 
-            trn_loss_ind = torch.sum(exten_inp*weights,dim=1) - targets
+            # trn_loss_ind = torch.sum(exten_inp*weights,dim=1) - targets
+            trn_loss_ind = self.criterion(self.logistic(torch.sum(exten_inp*weights,dim=1)),targets)
 
-            trn_losses -= trn_loss_ind*trn_loss_ind
+            trn_losses -= trn_loss_ind
             
             abs_value = F_curr - (trn_losses + self.lam*reg*rem_len) #\
             
